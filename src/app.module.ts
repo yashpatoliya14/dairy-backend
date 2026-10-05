@@ -5,6 +5,15 @@ import { PostgreSqlDriver } from '@mikro-orm/postgresql';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { Customer } from './entities/customer.entity.js';
+import { Distributor } from './entities/distributor.entity.js';
+import { Settings } from './entities/settings.entity.js';
+import { User } from './entities/user.entity.js';
+import { CustomersModule } from './customers/customers.module.js';
+import { DistributorsModule } from './distributors/distributors.module.js';
+import { SettingsModule } from './settings/settings.module.js';
+import { UsersModule } from './users/users.module.js';
+import { AuthModule } from './auth/auth.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -18,9 +27,14 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         clientUrl: configService.getOrThrow<string>('DATABASE_URL'),
-        autoLoadEntities: true,
+        entities: [User, Distributor, Customer, Settings],
       }),
     }),
+    UsersModule,
+    AuthModule,
+    DistributorsModule,
+    CustomersModule,
+    SettingsModule,
     // Distributed tracing, auto-correlated logs, request/job metrics, error
     // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
     ObserveModule.forRoot({
