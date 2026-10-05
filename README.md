@@ -31,6 +31,26 @@
 $ npm install
 ```
 
+## Supabase database
+
+This backend connects to Supabase PostgreSQL through MikroORM. Copy the environment
+template and replace the placeholder values with the URI from Supabase Dashboard >
+Connect > Connection string:
+
+```bash
+copy .env.example .env
+```
+
+Set `DATABASE_URL` in `.env` to the Supabase URI. The URI must include
+`?sslmode=require`, for example:
+
+```text
+postgresql://postgres.[project-ref]:[password]@[region].pooler.supabase.com:6543/postgres?sslmode=require
+```
+
+Use the session pooler URI for server deployments. Keep `.env` private; it is
+excluded from version control.
+
 ## Compile and run the project
 
 ```bash
