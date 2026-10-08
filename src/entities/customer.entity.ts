@@ -14,10 +14,10 @@ export class Customer {
   @ManyToOne(() => User, { fieldName: 'uid' })
   user!: User;
 
-  @Property()
+  @Property({ type: 'string' })
   name!: string;
 
-  @Property({ fieldName: 'unique_number' })
+  @Property({ type: 'string', fieldName: 'unique_number' })
   uniqueNumber!: string;
 
   @Property({ type: 'decimal', precision: 10, scale: 2 })

@@ -20,12 +20,13 @@ export class CustomersService {
 
   async create(userId: string, dto: CreateCustomerDto) {
     const distributor = await this.distributorFor(userId);
+    const uniqueNumber = await this.nextUniqueNumber(distributor);
     const customer = this.customers.create({
       cid: randomUUID(),
       distributor,
       user: await this.userFor(userId),
       name: dto.name.trim(),
-      uniqueNumber: dto.uniqueNumber.trim(),
+      uniqueNumber,
       liters: dto.liters,
       price: dto.price,
     });
@@ -62,6 +63,18 @@ export class CustomersService {
       throw new NotFoundException('User account not found');
     }
     return user;
+  }
+
+  private async nextUniqueNumber(distributor: Distributor) {
+    const customers = await this.customers.find(
+      { distributor },
+      { fields: ['uniqueNumber'] },
+    );
+    const highestNumber = customers.reduce((highest, customer) => {
+      const number = Number.parseInt(customer.uniqueNumber, 10);
+      return Number.isInteger(number) && number > highest ? number : highest;
+    }, 0);
+    return String(highestNumber + 1);
   }
 
   private serialize(customer: Customer) {

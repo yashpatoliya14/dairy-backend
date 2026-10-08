@@ -11,9 +11,9 @@ export class Settings {
   @Property({ fieldName: 'default_liters', type: 'decimal', precision: 10, scale: 2 })
   defaultLiters!: number;
 
-  @Property({ fieldName: 'dark_mode', default: false })
+  @Property({ type: 'boolean', fieldName: 'dark_mode', default: false })
   darkMode = false;
 
-  @Property({ fieldName: 'light_mode', default: true })
+  @Property({ type: 'boolean', fieldName: 'light_mode', default: true })
   lightMode = true;
 }

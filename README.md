@@ -79,7 +79,45 @@ $ npm run test:cov
 
 ## Deployment
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+The following commands deploy the API on an Ubuntu VPS using systemd. They assume
+the project is copied to `/var/www/dairy-backend`, the VPS uses a `dairy` Linux
+user, and PostgreSQL is hosted by Supabase.
+
+```bash
+sudo useradd --system --home /var/www/dairy-backend --shell /usr/sbin/nologin dairy
+sudo mkdir -p /var/www/dairy-backend /etc/dairy-backend
+sudo chown -R dairy:dairy /var/www/dairy-backend
+cd /var/www/dairy-backend
+git clone https://github.com/yashpatoliya14/dairy-backend.git .
+npm ci
+npm run build
+```
+
+Create `/etc/dairy-backend/dairy-backend.env` with your real database URL and a
+long random JWT secret:
+
+```dotenv
+DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:6543/postgres?sslmode=require
+PORT=3000
+JWT_SECRET=replace-with-a-long-random-secret
+JWT_EXPIRES_IN_SECONDS=604800
+```
+
+Then apply the schema and start the included systemd service:
+
+```bash
+sudo -u dairy npm run db:schema:update -- --run
+sudo cp deploy/dairy-backend.service /etc/systemd/system/dairy-backend.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now dairy-backend
+sudo systemctl status dairy-backend
+curl http://127.0.0.1:3000/
+```
+
+Use `sudo journalctl -u dairy-backend -f` for logs and
+`sudo systemctl restart dairy-backend` after deployments. Put Nginx or Caddy in
+front of the service for HTTPS, then set Flutter's `API_BASE_URL` to the HTTPS
+API URL.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
 

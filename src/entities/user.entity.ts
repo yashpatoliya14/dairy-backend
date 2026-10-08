@@ -11,18 +11,23 @@ export class User {
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   uid!: string;
 
-  @Property({ nullable: true })
+  @Property({ type: 'string', nullable: true })
   name?: string;
 
-  @Property({ unique: true })
+  @Property({ type: 'string', unique: true })
   email!: string;
 
-  @Property({ fieldName: 'password_hash', hidden: true })
+  @Property({ type: 'string', fieldName: 'password_hash', hidden: true })
   passwordHash!: string;
 
   @Enum(() => UserRole)
   role: UserRole = UserRole.USER;
 
-  @Property({ fieldName: 'phone_number', unique: true, nullable: true })
+  @Property({
+    type: 'string',
+    fieldName: 'phone_number',
+    unique: true,
+    nullable: true,
+  })
   phoneNumber?: string;
 }

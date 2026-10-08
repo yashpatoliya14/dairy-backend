@@ -5,10 +5,6 @@ export class CreateCustomerDto {
   @IsNotEmpty()
   name!: string;
 
-  @IsString()
-  @IsNotEmpty()
-  uniqueNumber!: string;
-
   @IsNumber()
   @Min(0)
   liters!: number;

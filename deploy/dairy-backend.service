@@ -1,0 +1,22 @@
+[Unit]
+Description=Dairy Backend NestJS API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dairy
+Group=dairy
+WorkingDirectory=/var/www/dairy-backend
+EnvironmentFile=/etc/dairy-backend/dairy-backend.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /var/www/dairy-backend/dist/main.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
