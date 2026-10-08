@@ -1,0 +1,18 @@
+[Unit]
+Description=Dairy Render Backend Keep-Alive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/dairy-backend
+Environment=NODE_ENV=production
+Environment=RENDER_HEALTH_URL=https://dairy-backend-eemp.onrender.com/
+ExecStart=/root/.nvm/versions/node/v24.21.0/bin/node /root/dairy-backend/deploy/render-keepalive.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -119,6 +119,29 @@ Use `sudo journalctl -u dairy-backend -f` for logs and
 front of the service for HTTPS, then set Flutter's `API_BASE_URL` to the HTTPS
 API URL.
 
+### Optional Render keep-alive service
+
+If this VPS should ping the Render deployment every five minutes, install the
+included systemd service:
+
+```bash
+cp deploy/render-keepalive.service /etc/systemd/system/render-keepalive.service
+systemctl daemon-reload
+systemctl enable --now render-keepalive.service
+systemctl status render-keepalive.service
+```
+
+The service runs `deploy/render-keepalive.js`, which immediately requests
+`https://dairy-backend-eemp.onrender.com/` and repeats every five minutes. If
+Node is installed at a different path, update `ExecStart` with the result of
+`readlink -f "$(command -v node)"`.
+
+View the keep-alive logs with:
+
+```bash
+journalctl -u render-keepalive.service -f
+```
+
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
 
 ```bash
