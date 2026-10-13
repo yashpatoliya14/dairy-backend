@@ -13,6 +13,7 @@ import { DistributorsModule } from './distributors/distributors.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { UsersModule } from './users/users.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { WhatsappModule } from './whatsapp/whatsapp.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AuthModule } from './auth/auth.module.js';
     DistributorsModule,
     CustomersModule,
     SettingsModule,
+    WhatsappModule,
   ],
   controllers: [AppController],
   providers: [AppService],
