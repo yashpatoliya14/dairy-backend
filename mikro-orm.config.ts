@@ -8,6 +8,9 @@ import { User } from './src/entities/user.entity.js';
 export default defineConfig({
   clientUrl: process.env.DATABASE_URL,
   entities: [User, Distributor, Customer, Settings],
+  driverOptions: {
+    ssl: { rejectUnauthorized: false },
+  },
   migrations: {
     path: './dist/migrations',
     pathTs: './src/migrations',
