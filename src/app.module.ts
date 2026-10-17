@@ -27,6 +27,9 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
       useFactory: (configService: ConfigService) => ({
         clientUrl: configService.getOrThrow<string>('DATABASE_URL'),
         entities: [User, Distributor, Customer, Settings, MilkEntry],
+        driverOptions: {
+          ssl: { rejectUnauthorized: false },
+        },
       }),
     }),
     UsersModule,
