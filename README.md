@@ -51,6 +51,41 @@ postgresql://postgres.[project-ref]:[password]@[region].pooler.supabase.com:6543
 Use the session pooler URI for server deployments. Keep `.env` private; it is
 excluded from version control.
 
+## WhatsApp notifications
+
+The backend integrates with the WhatsApp Cloud API. The public webhook endpoints
+are `GET /whatsapp/webhook` (Meta verification) and `POST /whatsapp/webhook`
+(incoming messages and delivery statuses). Authenticated administrators can use
+`POST /whatsapp/send-text`, `POST /whatsapp/send-template`,
+`POST /whatsapp/send-bulk`, and `GET /whatsapp/templates`.
+
+Configure the `WHATSAPP_*` variables in `.env.example`. Keep the Meta access
+token and webhook verification token private; never put them in the Flutter app
+or commit them to source control.
+
+Create and approve the `WHATSAPP_MILK_ENTRY_TEMPLATE_NAME` template in Meta
+WhatsApp Manager. The default template uses these positional variables:
+
+1. customer name
+2. liters
+3. price per liter
+4. total amount
+
+For the legacy Twilio notification path, add these credentials to `.env`:
+
+```dotenv
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+TWILIO_WHATSAPP_CONTENT_SID=HX...
+```
+
+Customer phone numbers must be stored in international E.164 format, such as
+`+14155552671`. When a milk entry is saved for a WhatsApp customer, the Flutter
+app calls the authenticated `POST /customers/:customerId/entries/notify`
+endpoint. The backend sends the approved template through Twilio, keeping
+credentials out of the mobile app.
+
 ## Compile and run the project
 
 ```bash
@@ -106,7 +141,7 @@ JWT_EXPIRES_IN_SECONDS=604800
 Then apply the schema and start the included systemd service:
 
 ```bash
-sudo -u dairy npm run db:schema:update -- --run
+sudo -u dairy npm run db:schema:update
 sudo cp deploy/dairy-backend.service /etc/systemd/system/dairy-backend.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now dairy-backend
