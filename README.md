@@ -136,6 +136,11 @@ DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@REGION.pooler.supabase.c
 PORT=3000
 JWT_SECRET=replace-with-a-long-random-secret
 JWT_EXPIRES_IN_SECONDS=604800
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@example.com
+SMTP_PASSWORD=your-gmail-app-password
+SMTP_FROM=Dairy Desk <your-email@example.com>
 ```
 
 Then apply the schema and start the included systemd service:
