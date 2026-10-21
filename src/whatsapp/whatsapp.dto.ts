@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -34,6 +35,48 @@ export class SendTemplateMessageRequest {
   @IsArray()
   @IsString({ each: true })
   bodyParameters?: string[];
+}
+
+export class SendBillMessageRequest {
+  @IsString()
+  @Matches(phonePattern)
+  to!: string;
+
+  @IsString()
+  customerName!: string;
+
+  @IsNumber()
+  liters!: number;
+
+  @IsNumber()
+  ratePerLiter!: number;
+
+  @IsOptional()
+  @IsNumber()
+  totalAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  deliverySession?: string;
+
+  @IsOptional()
+  @IsNumber()
+  previousDue?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  useTemplate?: boolean;
+
+  @IsOptional()
+  @IsString()
+  templateName?: string;
 }
 
 export class BulkCustomerRequest {

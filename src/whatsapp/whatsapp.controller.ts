@@ -13,6 +13,7 @@ import { WhatsAppService } from './whatsapp.service.js';
 import type { MetaWebhookPayload } from './whatsapp.service.js';
 import {
   BulkTemplateMessageDto,
+  SendBillMessageRequest,
   SendTemplateMessageRequest,
   SendTextMessageRequest,
 } from './whatsapp.dto.js';
@@ -43,6 +44,16 @@ export class WhatsAppController {
   @Post('send-text')
   sendText(@Body() dto: SendTextMessageRequest) {
     return this.whatsappService.sendTextMessage(dto);
+  }
+
+  /**
+   * POST /whatsapp/send-bill
+   * Send an auto-generated milk delivery bill to a customer.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('send-bill')
+  sendBill(@Body() dto: SendBillMessageRequest) {
+    return this.whatsappService.sendBillMessage(dto);
   }
 
   @UseGuards(JwtAuthGuard)

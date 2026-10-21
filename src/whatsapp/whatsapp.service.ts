@@ -31,6 +31,20 @@ export interface BulkMessageResult {
   }>;
 }
 
+export interface SendBillMessageDto {
+  to: string; // Customer phone e.g. "919104152524" (country code + number, no +)
+  customerName: string; // e.g. "Ramesh Patel"
+  liters: number; // e.g. 2.5
+  ratePerLiter: number; // e.g. 60
+  totalAmount?: number; // optional, defaults to liters * ratePerLiter
+  date?: string; // optional, e.g. "21-Oct-2026"
+  deliverySession?: string; // 'Morning' | 'Evening' | 'Full Day'
+  previousDue?: number; // optional outstanding balance
+  notes?: string;
+  useTemplate?: boolean; // if true, send as approved Meta template
+  templateName?: string; // template name if useTemplate is true
+}
+
 type MetaMessageResponse = {
   messages?: Array<{ id?: string }>;
 };
@@ -156,9 +170,10 @@ export class WhatsAppService {
       failed: 0,
       details: [],
     };
+
     for (const customer of customers) {
       try {
-        const response = await this.sendTemplateMessage({
+        const { messageId } = await this.sendTemplateMessage({
           to: customer.phone,
           templateName,
           languageCode,
@@ -168,21 +183,85 @@ export class WhatsAppService {
         result.details.push({
           phone: customer.phone,
           status: 'sent',
-          messageId: response.messageId,
+          messageId,
         });
       } catch (error) {
         result.failed++;
-        const message = this.errorMessage(error);
         result.details.push({
           phone: customer.phone,
           status: 'failed',
-          error: message,
+          error: this.errorMessage(error),
         });
-        this.logger.error(`WhatsApp bulk send failed: ${message}`);
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+
     return result;
+  }
+
+  /**
+   * Auto-generate and send a milk billing message to a customer.
+   * Can send either as formatted WhatsApp text message or as an approved Meta template.
+   */
+  async sendBillMessage(
+    dto: SendBillMessageDto,
+  ): Promise<{ messageId: string; formattedMessage: string }> {
+    const today =
+      dto.date ||
+      new Date().toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    const amount =
+      dto.totalAmount !== undefined
+        ? Number(dto.totalAmount)
+        : Number(dto.liters) * Number(dto.ratePerLiter);
+    const totalPayable =
+      amount + (dto.previousDue ? Number(dto.previousDue) : 0);
+
+    const messageLines = [
+      `🥛 *DAIRY MILK BILLING INVOICE* 🥛`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `👤 *Customer:* ${dto.customerName}`,
+      `📅 *Date:* ${today}`,
+      dto.deliverySession ? `⏰ *Session:* ${dto.deliverySession}` : null,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📦 *Quantity:* ${dto.liters} Liters`,
+      `💰 *Rate:* ₹${dto.ratePerLiter} / Liter`,
+      `💵 *Today's Amount:* ₹${amount.toFixed(2)}`,
+      dto.previousDue
+        ? `⚠️ *Previous Due:* ₹${Number(dto.previousDue).toFixed(2)}`
+        : null,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `🧾 *Total Payable:* ₹${totalPayable.toFixed(2)}`,
+      dto.notes ? `\n📝 *Note:* ${dto.notes}` : null,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `🙏 *Thank you for your business!*`,
+    ].filter(Boolean) as string[];
+
+    const formattedMessage = messageLines.join('\n');
+
+    if (dto.useTemplate && dto.templateName) {
+      const { messageId } = await this.sendTemplateMessage({
+        to: dto.to,
+        templateName: dto.templateName,
+        bodyParameters: [
+          dto.customerName,
+          String(dto.liters),
+          String(dto.ratePerLiter),
+          String(totalPayable.toFixed(2)),
+        ],
+      });
+      return { messageId, formattedMessage };
+    }
+
+    const { messageId } = await this.sendTextMessage({
+      to: dto.to,
+      message: formattedMessage,
+    });
+
+    return { messageId, formattedMessage };
   }
 
   async sendImageMessage(
