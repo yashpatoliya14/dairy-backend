@@ -232,30 +232,49 @@ export class WhatsAppService {
         year: 'numeric',
       });
     const formattedMessage =
-      `Hi ${dto.customerName}, your milk bill for ${dateOrMonth} is ready. ` +
-      `Quantity: ${liters.toFixed(1)} L. ` +
-      `Rate: ₹${Number(dto.ratePerLiter).toFixed(2)}/L. ` +
-      `Total due: ₹${totalPayable.toFixed(2)}.`;
+      `Milk Billing & Delivery Update\n\n` +
+      `Hello ${dto.customerName},\n\n` +
+      `Your milk bill update for ${dateOrMonth} has been generated.\n\n` +
+      `Details:\n` +
+      `• Quantity: ${liters.toFixed(1)} L\n` +
+      `• Rate: ₹${Number(dto.ratePerLiter).toFixed(2)}/L\n` +
+      `• Total Amount Due: ₹${totalPayable.toFixed(2)}\n\n` +
+      `Please review your delivery details. For any queries or corrections, please contact your distributor:\n\n` +
+      `Distributor Name: Haresh Sambad\n` +
+      `Contact Number: +91 9104152524\n` +
+      `They will be happy to assist you.\n` +
+      `Dairy Desk Management`;
 
     if (dto.useTemplate !== false) {
       const templateName =
         dto.templateName ??
         this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
         'dairy_milk_bill_update';
-      const { messageId } = await this.sendTemplateMessage({
-        to: dto.to,
-        templateName,
-        languageCode:
-          this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US',
-        bodyParameters: [
-          dto.customerName,
-          dateOrMonth,
-          `${liters.toFixed(1)} L`,
-          Number(dto.ratePerLiter).toFixed(2),
-          totalPayable.toFixed(2),
-        ],
-      });
-      return { messageId, formattedMessage };
+      try {
+        const { messageId } = await this.sendTemplateMessage({
+          to: dto.to,
+          templateName,
+          languageCode:
+            this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US',
+          bodyParameters: [
+            dto.customerName,
+            dateOrMonth,
+            `${liters.toFixed(1)} L`,
+            Number(dto.ratePerLiter).toFixed(2),
+            totalPayable.toFixed(2),
+          ],
+        });
+        return { messageId, formattedMessage };
+      } catch (templateError) {
+        this.logger.warn(
+          `Template "${templateName}" failed (${this.errorMessage(templateError)}). Falling back to direct text message...`,
+        );
+        const { messageId } = await this.sendTextMessage({
+          to: dto.to,
+          message: formattedMessage,
+        });
+        return { messageId, formattedMessage };
+      }
     }
 
     const { messageId } = await this.sendTextMessage({
