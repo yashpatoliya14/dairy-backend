@@ -250,31 +250,21 @@ export class WhatsAppService {
         dto.templateName ??
         this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
         'dairy_milk_bill_update';
-      try {
-        const { messageId } = await this.sendTemplateMessage({
-          to: dto.to,
-          templateName,
-          languageCode:
-            this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US',
-          bodyParameters: [
-            dto.customerName,
-            dateOrMonth,
-            `${liters.toFixed(1)} L`,
-            Number(dto.ratePerLiter).toFixed(2),
-            totalPayable.toFixed(2),
-          ],
-        });
-        return { messageId, formattedMessage };
-      } catch (templateError) {
-        this.logger.warn(
-          `Template "${templateName}" failed (${this.errorMessage(templateError)}). Falling back to direct text message...`,
-        );
-        const { messageId } = await this.sendTextMessage({
-          to: dto.to,
-          message: formattedMessage,
-        });
-        return { messageId, formattedMessage };
-      }
+
+      const { messageId } = await this.sendTemplateMessage({
+        to: dto.to,
+        templateName,
+        languageCode:
+          this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US',
+        bodyParameters: [
+          dto.customerName,
+          dateOrMonth,
+          `${liters.toFixed(1)} L`,
+          Number(dto.ratePerLiter).toFixed(2),
+          totalPayable.toFixed(2),
+        ],
+      });
+      return { messageId, formattedMessage };
     }
 
     const { messageId } = await this.sendTextMessage({
@@ -330,6 +320,42 @@ export class WhatsAppService {
     } catch (error) {
       throw this.apiException(error, 'Could not list WhatsApp templates');
     }
+  }
+
+  async getDiagnostics(): Promise<Record<string, unknown>> {
+    const wabaId = this.requiredConfig('WHATSAPP_BUSINESS_ACCOUNT_ID');
+    const phoneNumberId = this.requiredConfig('WHATSAPP_PHONE_NUMBER_ID');
+    const result: Record<string, unknown> = {
+      wabaId,
+      phoneNumberId,
+    };
+
+    try {
+      const phoneRes = await this.httpClient.get(`/${phoneNumberId}`);
+      result.phoneNumberInfo = phoneRes.data;
+    } catch (e) {
+      result.phoneNumberError = this.errorMessage(e);
+    }
+
+    try {
+      const wabaRes = await this.httpClient.get(
+        `/${wabaId}?fields=id,name,timezone_id`,
+      );
+      result.wabaInfo = wabaRes.data;
+    } catch (e) {
+      result.wabaError = this.errorMessage(e);
+    }
+
+    try {
+      const templatesRes = await this.httpClient.get<{ data?: unknown[] }>(
+        `/${wabaId}/message_templates?limit=100`,
+      );
+      result.templates = templatesRes.data?.data ?? [];
+    } catch (e) {
+      result.templatesError = this.errorMessage(e);
+    }
+
+    return result;
   }
 
   async markMessageAsRead(messageId: string): Promise<void> {

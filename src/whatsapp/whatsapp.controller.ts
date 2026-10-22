@@ -77,4 +77,10 @@ export class WhatsAppController {
   listTemplates() {
     return this.whatsappService.listTemplates();
   }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('debug')
+  getDebug() {
+    return this.whatsappService.getDiagnostics();
+  }
 }
