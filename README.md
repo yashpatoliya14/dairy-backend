@@ -63,13 +63,21 @@ Configure the `WHATSAPP_*` variables in `.env.example`. Keep the Meta access
 token and webhook verification token private; never put them in the Flutter app
 or commit them to source control.
 
-Create and approve the `WHATSAPP_MILK_ENTRY_TEMPLATE_NAME` template in Meta
-WhatsApp Manager. The default template uses these positional variables:
+Create and approve templates in Meta WhatsApp Manager. Milk entry alerts use
+`WHATSAPP_MILK_ENTRY_TEMPLATE_NAME`. Bill buttons use the separate
+`WHATSAPP_MILK_BILL_TEMPLATE_NAME` template (default:
+`dairy_milk_bill_update`) and send it as a Utility message:
 
 1. customer name
-2. liters
-3. price per liter
-4. total amount
+2. billing date or month
+3. billed quantity
+4. rate per liter
+5. total due
+
+`POST /whatsapp/send-bill` uses this approved template by default so bill
+notifications can be delivered outside WhatsApp's 24-hour customer-service
+window. Daily and monthly bill requests use `type: "daily"` or
+`type: "monthly"`; monthly requests include `totalLiters` and `monthlyAmount`.
 
 For the legacy Twilio notification path, add these credentials to `.env`:
 

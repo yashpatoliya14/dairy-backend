@@ -729,7 +729,23 @@ Content-Type: application/json
 
 You can create these templates in **[WhatsApp Manager ➔ Message Templates](https://business.facebook.com/wa/manage/message-templates/)**:
 
-### 1. Daily Delivery Notification (`milk_delivery_update`)
+### 1. Milk Bill Update (`dairy_milk_bill_update`)
+- **Category:** `UTILITY`
+- **Language:** `English (US)` (`en_US`)
+- **Body (16 words, counting each variable as one word):**
+  ```text
+  Hi {{1}}, your milk bill for {{2}} is ready. Quantity: {{3}}. Rate: ₹{{4}}/L. Total due: ₹{{5}}.
+  ```
+- **Variable samples:**
+  1. `Ramesh`
+  2. `23 Oct 2026` or `October 2026`
+  3. `2.0 L`
+  4. `60.00`
+  5. `120.00`
+- Configure `WHATSAPP_MILK_BILL_TEMPLATE_NAME=dairy_milk_bill_update`.
+- This is a transactional bill update; Meta makes the final category decision.
+
+### 2. Daily Delivery Notification (`milk_delivery_update`)
 - **Category:** `UTILITY`
 - **Header:** `🥛 Milk Delivery Update`
 - **Body:**
@@ -744,7 +760,7 @@ You can create these templates in **[WhatsApp Manager ➔ Message Templates](htt
   ```
 - **Footer:** `Milk Management App`
 
-### 2. Monthly Payment Reminder (`milk_payment_reminder`)
+### 3. Monthly Payment Reminder (`milk_payment_reminder`)
 - **Category:** `UTILITY`
 - **Header:** `💳 Monthly Milk Bill Reminder`
 - **Body:**

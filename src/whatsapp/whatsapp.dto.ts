@@ -1,9 +1,12 @@
 import {
+  IsBoolean,
   IsArray,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
   Matches,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -45,11 +48,32 @@ export class SendBillMessageRequest {
   @IsString()
   customerName!: string;
 
+  @ValidateIf((dto: SendBillMessageRequest) => dto.type !== 'monthly')
   @IsNumber()
-  liters!: number;
+  liters?: number;
 
   @IsNumber()
   ratePerLiter!: number;
+
+  @IsOptional()
+  @IsIn(['daily', 'monthly'])
+  type?: 'daily' | 'monthly';
+
+  @ValidateIf((dto: SendBillMessageRequest) => dto.type === 'monthly')
+  @IsNumber()
+  totalLiters!: number;
+
+  @IsOptional()
+  @IsString()
+  monthName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  totalDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  monthlyAmount?: number;
 
   @IsOptional()
   @IsNumber()
@@ -72,6 +96,7 @@ export class SendBillMessageRequest {
   notes?: string;
 
   @IsOptional()
+  @IsBoolean()
   useTemplate?: boolean;
 
   @IsOptional()

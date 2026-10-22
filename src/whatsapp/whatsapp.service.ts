@@ -34,9 +34,14 @@ export interface BulkMessageResult {
 export interface SendBillMessageDto {
   to: string; // Customer phone e.g. "919104152524" (country code + number, no +)
   customerName: string; // e.g. "Ramesh Patel"
-  liters: number; // e.g. 2.5
+  type?: 'daily' | 'monthly';
+  liters?: number; // e.g. 2.5
+  totalLiters?: number;
   ratePerLiter: number; // e.g. 60
   totalAmount?: number; // optional, defaults to liters * ratePerLiter
+  monthlyAmount?: number;
+  monthName?: string;
+  totalDays?: number;
   date?: string; // optional, e.g. "21-Oct-2026"
   deliverySession?: string; // 'Morning' | 'Evening' | 'Full Day'
   previousDue?: number; // optional outstanding balance
@@ -200,57 +205,54 @@ export class WhatsAppService {
   }
 
   /**
-   * Auto-generate and send a milk billing message to a customer.
-   * Can send either as formatted WhatsApp text message or as an approved Meta template.
+   * Send a bill using the approved Meta template by default; free-form text is
+   * reserved for callers that explicitly opt in during the 24-hour window.
    */
   async sendBillMessage(
     dto: SendBillMessageDto,
   ): Promise<{ messageId: string; formattedMessage: string }> {
-    const today =
-      dto.date ||
+    const isMonthly = dto.type === 'monthly';
+    const liters = isMonthly
+      ? Number(dto.totalLiters ?? dto.liters ?? 0)
+      : Number(dto.liters ?? 0);
+    const amount = isMonthly
+      ? Number(
+          dto.monthlyAmount ??
+            dto.totalAmount ??
+            liters * Number(dto.ratePerLiter),
+        )
+      : Number(dto.totalAmount ?? liters * Number(dto.ratePerLiter));
+    const previousDue = Number(dto.previousDue ?? 0);
+    const totalPayable = amount + previousDue;
+    const dateOrMonth =
+      (isMonthly ? dto.monthName : dto.date) ??
       new Date().toLocaleDateString('en-IN', {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
       });
-    const amount =
-      dto.totalAmount !== undefined
-        ? Number(dto.totalAmount)
-        : Number(dto.liters) * Number(dto.ratePerLiter);
-    const totalPayable =
-      amount + (dto.previousDue ? Number(dto.previousDue) : 0);
+    const formattedMessage =
+      `Hi ${dto.customerName}, your milk bill for ${dateOrMonth} is ready. ` +
+      `Quantity: ${liters.toFixed(1)} L. ` +
+      `Rate: ₹${Number(dto.ratePerLiter).toFixed(2)}/L. ` +
+      `Total due: ₹${totalPayable.toFixed(2)}.`;
 
-    const messageLines = [
-      `🥛 *DAIRY MILK BILLING INVOICE* 🥛`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `👤 *Customer:* ${dto.customerName}`,
-      `📅 *Date:* ${today}`,
-      dto.deliverySession ? `⏰ *Session:* ${dto.deliverySession}` : null,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `📦 *Quantity:* ${dto.liters} Liters`,
-      `💰 *Rate:* ₹${dto.ratePerLiter} / Liter`,
-      `💵 *Today's Amount:* ₹${amount.toFixed(2)}`,
-      dto.previousDue
-        ? `⚠️ *Previous Due:* ₹${Number(dto.previousDue).toFixed(2)}`
-        : null,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `🧾 *Total Payable:* ₹${totalPayable.toFixed(2)}`,
-      dto.notes ? `\n📝 *Note:* ${dto.notes}` : null,
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `🙏 *Thank you for your business!*`,
-    ].filter(Boolean) as string[];
-
-    const formattedMessage = messageLines.join('\n');
-
-    if (dto.useTemplate && dto.templateName) {
+    if (dto.useTemplate !== false) {
+      const templateName =
+        dto.templateName ??
+        this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
+        'dairy_milk_bill_update';
       const { messageId } = await this.sendTemplateMessage({
         to: dto.to,
-        templateName: dto.templateName,
+        templateName,
+        languageCode:
+          this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US',
         bodyParameters: [
           dto.customerName,
-          String(dto.liters),
-          String(dto.ratePerLiter),
-          String(totalPayable.toFixed(2)),
+          dateOrMonth,
+          `${liters.toFixed(1)} L`,
+          Number(dto.ratePerLiter).toFixed(2),
+          totalPayable.toFixed(2),
         ],
       });
       return { messageId, formattedMessage };
