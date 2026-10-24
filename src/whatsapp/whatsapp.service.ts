@@ -46,6 +46,8 @@ export interface SendBillMessageDto {
   deliverySession?: string; // 'Morning' | 'Evening' | 'Full Day'
   previousDue?: number; // optional outstanding balance
   notes?: string;
+  distributorName?: string;
+  distributorPhone?: string;
   useTemplate?: boolean; // if true, send as approved Meta template
   templateName?: string; // template name if useTemplate is true
   languageCode?: string;
@@ -239,6 +241,15 @@ export class WhatsAppService {
         month: 'short',
         year: 'numeric',
       });
+    const distributorName =
+      dto.distributorName ??
+      this.config.get<string>('WHATSAPP_DISTRIBUTOR_NAME') ??
+      'Haresh Sambad';
+    const distributorPhone =
+      dto.distributorPhone ??
+      this.config.get<string>('WHATSAPP_DISTRIBUTOR_PHONE') ??
+      '+91 9104152524';
+
     const formattedMessage =
       `Milk Billing & Delivery Update\n\n` +
       `Hello ${dto.customerName},\n\n` +
@@ -248,8 +259,8 @@ export class WhatsAppService {
       `• Rate: ₹${Number(dto.ratePerLiter).toFixed(2)}/L\n` +
       `• Total Amount Due: ₹${totalPayable.toFixed(2)}\n\n` +
       `Please review your delivery details. For any queries or corrections, please contact your distributor:\n\n` +
-      `Distributor Name: Haresh Sambad\n` +
-      `Contact Number: +91 9104152524\n` +
+      `Distributor Name: ${distributorName}\n` +
+      `Contact Number: ${distributorPhone}\n` +
       `They will be happy to assist you.\n` +
       `Dairy Desk Management`;
 
@@ -267,7 +278,7 @@ export class WhatsAppService {
         'en';
 
       this.logger.log(
-        `Sending bill template "${templateName}" (${languageCode}) to ${maskedTo} (amount: ₹${totalPayable.toFixed(2)})`,
+        `Sending bill template "${templateName}" (${languageCode}) with 7 params to ${maskedTo} (amount: ₹${totalPayable.toFixed(2)})`,
       );
 
       const { messageId } = await this.sendTemplateMessage({
@@ -280,6 +291,8 @@ export class WhatsAppService {
           `${liters.toFixed(1)} L`,
           Number(dto.ratePerLiter).toFixed(2),
           totalPayable.toFixed(2),
+          distributorName,
+          distributorPhone,
         ],
       });
 

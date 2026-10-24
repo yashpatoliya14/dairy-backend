@@ -96,6 +96,14 @@ export class SendBillMessageRequest {
   notes?: string;
 
   @IsOptional()
+  @IsString()
+  distributorName?: string;
+
+  @IsOptional()
+  @IsString()
+  distributorPhone?: string;
+
+  @IsOptional()
   @IsBoolean()
   useTemplate?: boolean;
 
