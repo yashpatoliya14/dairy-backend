@@ -574,7 +574,7 @@ Go to **[Render Dashboard](https://dashboard.render.com/)** ➔ Select Service *
 |---|---|
 | `WHATSAPP_API_VERSION` | `v21.0` |
 | `WHATSAPP_API_URL` | `https://graph.facebook.com/v21.0` |
-| `WHATSAPP_BUSINESS_ACCOUNT_ID` | `956649247030355` |
+| `WHATSAPP_BUSINESS_ACCOUNT_ID` | `2473183253205958` |
 | `WHATSAPP_PHONE_NUMBER_ID` | `1307155675822696` |
 | `WHATSAPP_ACCESS_TOKEN` | `EAAzw1veo958BSvlSfcjWKIE5tv3zh3tkBmMOvcrBbaPXRxdnDLUMEe7lW6Qi9AMcpntZAPgv3f4hHTIVHPBF4BaxVVRfQ2jYMPCSKjewTF8y5bx5Ry7n31jfZADHchje9XGD6NGBgBkLWhDmQv9tvMXbhabFCTfSIcMSBJHJATCISHrAaov0ZCuP3ol1h2WMo2w0wppnlrocbNSRwaxmWdIxg6PGyQLhaVdSfLdzXtk3TfgdeuDuzl734mD0e2bHP65K79RdM950LIIdTOf` |
 | `WHATSAPP_APP_ID` | `3642505789241247` |
@@ -637,7 +637,7 @@ Once Phase 1 is deployed on Render, fill this in the Meta Developer Dashboard:
 
 | Property | Value | Description |
 |---|---|---|
-| **WhatsApp Business Account ID (WABA ID)** | `956649247030355` | Your WhatsApp Business Account identifier |
+| **WhatsApp Business Account ID (WABA ID)** | `2473183253205958` | Your WhatsApp Business Account identifier (Haresh's Milk) |
 | **Phone Number ID** | `1307155675822696` | ID of the registered WhatsApp phone number |
 | **Permanent Access Token** | `EAAzw1veo958BSvlSfcjWKIE5tv3zh3tkBmMOvcrBbaPXRxdnDLUMEe7lW6Qi9AMcpntZAPgv3f4hHTIVHPBF4BaxVVRfQ2jYMPCSKjewTF8y5bx5Ry7n31jfZADHchje9XGD6NGBgBkLWhDmQv9tvMXbhabFCTfSIcMSBJHJATCISHrAaov0ZCuP3ol1h2WMo2w0wppnlrocbNSRwaxmWdIxg6PGyQLhaVdSfLdzXtk3TfgdeuDuzl734mD0e2bHP65K79RdM950LIIdTOf` | Permanent System User Token |
 | **App ID** | `3642505789241247` | Your Meta App ID |
