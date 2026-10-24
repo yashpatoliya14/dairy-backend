@@ -102,6 +102,10 @@ export class SendBillMessageRequest {
   @IsOptional()
   @IsString()
   templateName?: string;
+
+  @IsOptional()
+  @IsString()
+  languageCode?: string;
 }
 
 export class BulkCustomerRequest {

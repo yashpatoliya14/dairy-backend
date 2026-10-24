@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
+  Param,
   Post,
   Query,
   UseGuards,
@@ -73,9 +74,21 @@ export class WhatsAppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('inspect/:id')
+  inspectNode(@Param('id') id: string) {
+    return this.whatsappService.inspectNode(id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('templates')
   listTemplates() {
     return this.whatsappService.listTemplates();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('create-bill-template')
+  createBillTemplate() {
+    return this.whatsappService.createBillTemplate();
   }
 
   @UseGuards(JwtAuthGuard)

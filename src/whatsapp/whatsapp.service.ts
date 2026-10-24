@@ -48,6 +48,14 @@ export interface SendBillMessageDto {
   notes?: string;
   useTemplate?: boolean; // if true, send as approved Meta template
   templateName?: string; // template name if useTemplate is true
+  languageCode?: string;
+}
+
+export interface SendBillResult {
+  status: 'SubmittedToProvider';
+  messageId: string;
+  recipient: string;
+  formattedMessage: string;
 }
 
 type MetaMessageResponse = {
@@ -210,7 +218,7 @@ export class WhatsAppService {
    */
   async sendBillMessage(
     dto: SendBillMessageDto,
-  ): Promise<{ messageId: string; formattedMessage: string }> {
+  ): Promise<SendBillResult> {
     const isMonthly = dto.type === 'monthly';
     const liters = isMonthly
       ? Number(dto.totalLiters ?? dto.liters ?? 0)
@@ -245,17 +253,27 @@ export class WhatsAppService {
       `They will be happy to assist you.\n` +
       `Dairy Desk Management`;
 
+    const normalizedTo = this.normalizePhoneNumber(dto.to);
+    const maskedTo = this.maskPhoneNumber(normalizedTo);
+
     if (dto.useTemplate !== false) {
       const templateName =
         dto.templateName ??
         this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
         'dairy_milk_bill_update';
+      const languageCode =
+        dto.languageCode ??
+        this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ??
+        'en';
+
+      this.logger.log(
+        `Sending bill template "${templateName}" (${languageCode}) to ${maskedTo} (amount: ₹${totalPayable.toFixed(2)})`,
+      );
 
       const { messageId } = await this.sendTemplateMessage({
-        to: dto.to,
+        to: normalizedTo,
         templateName,
-        languageCode:
-          this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US',
+        languageCode,
         bodyParameters: [
           dto.customerName,
           dateOrMonth,
@@ -264,15 +282,30 @@ export class WhatsAppService {
           totalPayable.toFixed(2),
         ],
       });
-      return { messageId, formattedMessage };
+
+      return {
+        status: 'SubmittedToProvider',
+        messageId,
+        recipient: maskedTo,
+        formattedMessage,
+      };
     }
 
+    this.logger.log(
+      `Sending direct text bill to ${maskedTo} within 24h customer window`,
+    );
+
     const { messageId } = await this.sendTextMessage({
-      to: dto.to,
+      to: normalizedTo,
       message: formattedMessage,
     });
 
-    return { messageId, formattedMessage };
+    return {
+      status: 'SubmittedToProvider',
+      messageId,
+      recipient: maskedTo,
+      formattedMessage,
+    };
   }
 
   async sendImageMessage(
@@ -310,6 +343,15 @@ export class WhatsAppService {
     return this.messageResult(data);
   }
 
+  async inspectNode(id: string): Promise<unknown> {
+    try {
+      const res = await this.httpClient.get(`/${id}`);
+      return res.data;
+    } catch (e) {
+      throw this.apiException(e, `Could not inspect ${id}`);
+    }
+  }
+
   async listTemplates(): Promise<unknown[]> {
     const wabaId = this.requiredConfig('WHATSAPP_BUSINESS_ACCOUNT_ID');
     try {
@@ -322,12 +364,55 @@ export class WhatsAppService {
     }
   }
 
+  async createBillTemplate(): Promise<{ id: string; status: string; category: string }> {
+    const wabaId = this.requiredConfig('WHATSAPP_BUSINESS_ACCOUNT_ID');
+    const templateName =
+      this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
+      'dairy_milk_bill_update';
+    const language =
+      this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US';
+
+    try {
+      const response = await this.httpClient.post<{
+        id: string;
+        status: string;
+        category: string;
+      }>(`/${wabaId}/message_templates`, {
+        name: templateName,
+        category: 'UTILITY',
+        language,
+        components: [
+          {
+            type: 'BODY',
+            text: 'Hi {{1}}, your milk bill for {{2}} is ready. Quantity: {{3}}. Rate: ₹{{4}}/L. Total due: ₹{{5}}.',
+            example: {
+              body_text: [
+                ['Ramesh Patel', 'October 2026', '30.0 L', '60.00', '1800.00'],
+              ],
+            },
+          },
+        ],
+      });
+      this.logger.log(
+        `Created WhatsApp template "${templateName}" on Meta: ID ${response.data.id}, status ${response.data.status}`,
+      );
+      return response.data;
+    } catch (error) {
+      throw this.apiException(error, 'Could not create WhatsApp bill template');
+    }
+  }
+
   async getDiagnostics(): Promise<Record<string, unknown>> {
     const wabaId = this.requiredConfig('WHATSAPP_BUSINESS_ACCOUNT_ID');
     const phoneNumberId = this.requiredConfig('WHATSAPP_PHONE_NUMBER_ID');
+    const configuredBillTemplate =
+      this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
+      'dairy_milk_bill_update';
+
     const result: Record<string, unknown> = {
       wabaId,
       phoneNumberId,
+      configuredBillTemplate,
     };
 
     try {
@@ -347,12 +432,16 @@ export class WhatsAppService {
     }
 
     try {
-      const templatesRes = await this.httpClient.get<{ data?: unknown[] }>(
+      const templatesRes = await this.httpClient.get<{ data?: Array<{ name?: string; status?: string; language?: string }> }>(
         `/${wabaId}/message_templates?limit=100`,
       );
-      result.templates = templatesRes.data?.data ?? [];
+      const templates = templatesRes.data?.data ?? [];
+      result.templates = templates;
+      const found = templates.find((t) => t.name === configuredBillTemplate);
+      result.billTemplateStatus = found ? found.status : 'NOT_FOUND_ON_META';
     } catch (e) {
       result.templatesError = this.errorMessage(e);
+      result.billTemplateStatus = 'UNKNOWN';
     }
 
     return result;
@@ -440,13 +529,28 @@ export class WhatsAppService {
   }
 
   private normalizePhoneNumber(value: string): string {
-    const normalized = value.replace(/[^\d]/g, '');
+    let normalized = value.replace(/[^\d]/g, '');
+    if (normalized.length === 10 && /^[6-9]\d{9}$/.test(normalized)) {
+      normalized = `91${normalized}`;
+    }
     if (!/^[1-9]\d{7,14}$/.test(normalized)) {
       throw new BadGatewayException(
         'WhatsApp phone number must include country code with no +, spaces, or dashes',
       );
     }
     return normalized;
+  }
+
+  private maskPhoneNumber(phone: string): string {
+    if (phone.length <= 4) return phone;
+    const visibleStart = Math.min(4, Math.floor(phone.length / 2));
+    const visibleEnd = 2;
+    const maskedLength = phone.length - visibleStart - visibleEnd;
+    return (
+      phone.slice(0, visibleStart) +
+      '*'.repeat(Math.max(3, maskedLength)) +
+      phone.slice(-visibleEnd)
+    );
   }
 
   private apiException(error: unknown, fallback: string): BadGatewayException {

@@ -81,6 +81,8 @@ describe('WhatsAppService.sendBillMessage', () => {
     });
 
     expect(result.messageId).toBe('wamid.test');
+    expect(result.status).toBe('SubmittedToProvider');
+    expect(result.recipient).toBe('9198******10');
     expect(requests[0].url).toBe('/test-phone-number-id/messages');
     expect(requests[0].body).toMatchObject({
       type: 'template',
@@ -116,6 +118,7 @@ describe('WhatsAppService.sendBillMessage', () => {
       previousDue: 100,
     });
 
+    expect(result.status).toBe('SubmittedToProvider');
     expect(requests[0].body).toMatchObject({
       type: 'template',
       template: {
@@ -133,14 +136,26 @@ describe('WhatsAppService.sendBillMessage', () => {
         ],
       },
     });
-    expect(result.formattedMessage).toBe(
-      'Hi Test Customer, your milk bill for October 2026 is ready. ' +
-        'Quantity: 30.0 L. Rate: ₹60.00/L. Total due: ₹1900.00.',
-    );
+    expect(result.formattedMessage).toContain('Milk Billing & Delivery Update');
+    expect(result.formattedMessage).toContain('Total Amount Due: ₹1900.00');
+  });
+
+  it('normalizes 10-digit Indian phone numbers with 91 prefix', async () => {
+    const result = await service.sendBillMessage({
+      to: '9876543210',
+      customerName: 'Test Customer',
+      liters: 1,
+      ratePerLiter: 60,
+    });
+
+    expect(result.status).toBe('SubmittedToProvider');
+    expect(requests[0].body).toMatchObject({
+      to: '919876543210',
+    });
   });
 
   it('sends free-form text only when explicitly requested', async () => {
-    await service.sendBillMessage({
+    const result = await service.sendBillMessage({
       to: '919876543210',
       customerName: 'Test Customer',
       liters: 1,
@@ -148,9 +163,50 @@ describe('WhatsAppService.sendBillMessage', () => {
       useTemplate: false,
     });
 
+    expect(result.status).toBe('SubmittedToProvider');
     expect(requests[0].body).toMatchObject({
       type: 'text',
       text: { preview_url: false },
     });
+  });
+
+  it('throws BadGatewayException when Meta rejects message with provider error', async () => {
+    const error: any = new Error('Request failed with status code 400');
+    error.isAxiosError = true;
+    error.response = {
+      status: 400,
+      data: {
+        error: {
+          message: '(#132001) Template name does not exist in the translation',
+          code: 132001,
+        },
+      },
+    };
+
+    vi.spyOn((service as any).httpClient, 'post').mockRejectedValue(error);
+
+    await expect(
+      service.sendBillMessage({
+        to: '919876543210',
+        customerName: 'Test Customer',
+        liters: 1,
+        ratePerLiter: 60,
+      }),
+    ).rejects.toThrow('Template name does not exist in the translation');
+  });
+
+  it('throws ServiceUnavailableException when WhatsApp config is missing', async () => {
+    const emptyConfig = new ConfigService();
+    vi.spyOn(emptyConfig, 'get').mockReturnValue(undefined);
+    const unconfiguredService = new WhatsAppService(emptyConfig);
+
+    await expect(
+      unconfiguredService.sendBillMessage({
+        to: '919876543210',
+        customerName: 'Test Customer',
+        liters: 1,
+        ratePerLiter: 60,
+      }),
+    ).rejects.toThrow('WhatsApp is not configured');
   });
 });
