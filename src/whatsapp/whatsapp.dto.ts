@@ -1,10 +1,13 @@
 import {
+  IsBoolean,
   IsArray,
   IsIn,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -36,6 +39,82 @@ export class SendTemplateMessageRequest {
   @IsArray()
   @IsString({ each: true })
   bodyParameters?: string[];
+}
+
+export class SendBillMessageRequest {
+  @IsString()
+  @Matches(phonePattern)
+  to!: string;
+
+  @IsString()
+  customerName!: string;
+
+  @ValidateIf((dto: SendBillMessageRequest) => dto.type !== 'monthly')
+  @IsNumber()
+  liters?: number;
+
+  @IsNumber()
+  ratePerLiter!: number;
+
+  @IsOptional()
+  @IsIn(['daily', 'monthly'])
+  type?: 'daily' | 'monthly';
+
+  @ValidateIf((dto: SendBillMessageRequest) => dto.type === 'monthly')
+  @IsNumber()
+  totalLiters!: number;
+
+  @IsOptional()
+  @IsString()
+  monthName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  totalDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  monthlyAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  totalAmount?: number;
+
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  deliverySession?: string;
+
+  @IsOptional()
+  @IsNumber()
+  previousDue?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsString()
+  distributorName?: string;
+
+  @IsOptional()
+  @IsString()
+  distributorPhone?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  useTemplate?: boolean;
+
+  @IsOptional()
+  @IsString()
+  templateName?: string;
+
+  @IsOptional()
+  @IsString()
+  languageCode?: string;
 }
 
 export class BulkCustomerRequest {

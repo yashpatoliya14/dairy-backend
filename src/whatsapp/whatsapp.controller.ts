@@ -17,6 +17,7 @@ import { WhatsAppService } from './whatsapp.service.js';
 import type { MetaWebhookPayload } from './whatsapp.service.js';
 import {
   BulkTemplateMessageDto,
+  SendBillMessageRequest,
   SendTemplateMessageRequest,
   SendTextMessageRequest,
   UpdateDailyMessageStatusDto,
@@ -82,6 +83,16 @@ export class WhatsAppController {
     return this.whatsappService.sendTextMessage(dto);
   }
 
+  /**
+   * POST /whatsapp/send-bill
+   * Send an auto-generated milk delivery bill to a customer.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('send-bill')
+  sendBill(@Body() dto: SendBillMessageRequest) {
+    return this.whatsappService.sendBillMessage(dto);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('send-template')
   sendTemplate(@Body() dto: SendTemplateMessageRequest) {
@@ -99,8 +110,26 @@ export class WhatsAppController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('inspect/:id')
+  inspectNode(@Param('id') id: string) {
+    return this.whatsappService.inspectNode(id);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('templates')
   listTemplates() {
     return this.whatsappService.listTemplates();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('create-bill-template')
+  createBillTemplate() {
+    return this.whatsappService.createBillTemplate();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('debug')
+  getDebug() {
+    return this.whatsappService.getDiagnostics();
   }
 }
