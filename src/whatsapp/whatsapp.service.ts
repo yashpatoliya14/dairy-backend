@@ -88,19 +88,45 @@ export type MetaWebhookPayload = {
 
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { EntityRepository } from '@mikro-orm/postgresql';
+import { RequestContext } from '@mikro-orm/core';
 import { randomUUID } from 'node:crypto';
 import { DailyMessageLog } from '../entities/daily-message-log.entity.js';
 import { Customer } from '../entities/customer.entity.js';
 import { MilkEntry } from '../entities/milk-entry.entity.js';
 import { Distributor } from '../entities/distributor.entity.js';
 import { User } from '../entities/user.entity.js';
-import { UpdateDailyMessageStatusDto } from './whatsapp.dto.js';
+import {
+  SendDailyEntryBulkDto,
+  SendDailyEntryDto,
+  UpdateDailyMessageStatusDto,
+} from './whatsapp.dto.js';
 import { NotFoundException } from '@nestjs/common';
+
+export interface BulkMessageJob {
+  jobId: string;
+  userId: string;
+  date: string;
+  totalSelected: number;
+  eligibleCount: number;
+  ineligibleCount: number;
+  sentCount: number;
+  failedCount: number;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  startedAt: string;
+  completedAt?: string;
+  results: Array<{
+    customerId: string;
+    customerName: string;
+    status: string;
+    error?: string;
+  }>;
+}
 
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly httpClient: AxiosInstance;
+  private readonly bulkJobs = new Map<string, BulkMessageJob>();
 
   constructor(
     private readonly config: ConfigService,
@@ -824,4 +850,323 @@ export class WhatsAppService {
       errorMessage: log.errorMessage,
     }));
   }
+
+  async sendDailyEntry(
+    userId: string,
+    dto: SendDailyEntryDto,
+  ): Promise<{ success: boolean; status: string; messageId?: string; error?: string }> {
+    const user = await this.users.findOne({ uid: userId });
+    if (!user) throw new NotFoundException('User not found');
+    const distributor = await this.distributors.findOne({ user });
+    if (!distributor) throw new NotFoundException('Distributor not found');
+
+    const customer = await this.customers.findOne({
+      cid: dto.customerId,
+      distributor,
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const phone = customer.phoneNumber?.trim();
+    if (!phone) {
+      await this.updateMessageStatus(userId, {
+        customerId: customer.cid,
+        date: dto.date,
+        status: 'failed',
+        errorMessage: 'Customer phone number is missing',
+      });
+      return {
+        success: false,
+        status: 'failed',
+        error: 'Customer phone number is missing',
+      };
+    }
+
+    const entryDate = new Date(`${dto.date}T00:00:00.000Z`);
+    const entry = await this.milkEntries.findOne({
+      distributor,
+      customer,
+      entryDate,
+    });
+
+    if (!entry) {
+      return {
+        success: false,
+        status: 'failed',
+        error: `Customer ${customer.name} does not have a milk entry for ${dto.date}`,
+      };
+    }
+
+    const liters = Number(entry.liters);
+    const price = Number(entry.price);
+    const total = Number(entry.total);
+
+    const formattedDate = entryDate.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    const distributorName =
+      distributor.dairyName ??
+      this.config.get<string>('WHATSAPP_DISTRIBUTOR_NAME') ??
+      'Dairy Desk';
+    const distributorPhone =
+      user.phoneNumber ??
+      this.config.get<string>('WHATSAPP_DISTRIBUTOR_PHONE') ??
+      '+91 7600579310';
+
+    try {
+      const billResult = await this.sendBillMessage({
+        to: phone,
+        customerName: customer.name,
+        liters,
+        ratePerLiter: price,
+        totalAmount: total,
+        type: 'daily',
+        date: formattedDate,
+        distributorName,
+        distributorPhone,
+        useTemplate: true,
+      });
+
+      await this.updateMessageStatus(userId, {
+        customerId: customer.cid,
+        date: dto.date,
+        status: 'sent',
+        providerMessageId: billResult.messageId,
+        messageContent: billResult.formattedMessage,
+      });
+
+      return {
+        success: true,
+        status: 'sent',
+        messageId: billResult.messageId,
+      };
+    } catch (err: unknown) {
+      const errMessage = this.errorMessage(err);
+      this.logger.warn(
+        `Template send failed for ${customer.name}: ${errMessage}. Attempting text fallback...`,
+      );
+      try {
+        const textToSend =
+          dto.message ??
+          `Milk Delivery Update (${formattedDate})\n` +
+          `Hello ${customer.name},\n` +
+          `Quantity: ${liters.toFixed(1)} L\n` +
+          `Rate: ₹${price.toFixed(2)}/L\n` +
+          `Total: ₹${total.toFixed(2)}\n` +
+          `Dairy: ${distributorName}`;
+
+        const textResult = await this.sendTextMessage({
+          to: phone,
+          message: textToSend,
+        });
+
+        await this.updateMessageStatus(userId, {
+          customerId: customer.cid,
+          date: dto.date,
+          status: 'sent',
+          providerMessageId: textResult.messageId,
+          messageContent: textToSend,
+        });
+
+        return {
+          success: true,
+          status: 'sent',
+          messageId: textResult.messageId,
+        };
+      } catch (fallbackErr: unknown) {
+        const finalError = this.errorMessage(fallbackErr);
+        await this.updateMessageStatus(userId, {
+          customerId: customer.cid,
+          date: dto.date,
+          status: 'failed',
+          errorMessage: finalError,
+        });
+
+        return {
+          success: false,
+          status: 'failed',
+          error: finalError,
+        };
+      }
+    }
+  }
+
+  getBulkJobStatus(jobId: string): BulkMessageJob | null {
+    return this.bulkJobs.get(jobId) ?? null;
+  }
+
+  async sendBulkDailyEntries(
+    userId: string,
+    dto: SendDailyEntryBulkDto,
+  ): Promise<{
+    success: boolean;
+    jobId: string;
+    totalSelected: number;
+    eligibleCount: number;
+    ineligibleCount: number;
+    message: string;
+  }> {
+    const user = await this.users.findOne({ uid: userId });
+    if (!user) throw new NotFoundException('User not found');
+    const distributor = await this.distributors.findOne({ user });
+    if (!distributor) throw new NotFoundException('Distributor not found');
+
+    const entryDate = new Date(`${dto.date}T00:00:00.000Z`);
+
+    const entries = await this.milkEntries.find({
+      distributor,
+      entryDate,
+    });
+    const entryByCid = new Map(entries.map((e) => [e.customer.cid, e]));
+
+    const customers = await this.customers.find({
+      distributor,
+      cid: { $in: dto.customerIds },
+    });
+
+    const eligibleCustomers: Customer[] = [];
+    let ineligibleCount = 0;
+
+    for (const customer of customers) {
+      if (entryByCid.has(customer.cid)) {
+        eligibleCustomers.push(customer);
+      } else {
+        ineligibleCount++;
+      }
+    }
+
+    // Immediately mark eligible customers as 'pending' in DailyMessageLog
+    for (const customer of eligibleCustomers) {
+      const log = await this.messageLogs.findOne({
+        distributor,
+        customer,
+        entryDate,
+      });
+
+      if (!log) {
+        const newLog = this.messageLogs.create({
+          id: randomUUID(),
+          customer,
+          distributor,
+          user,
+          entryDate,
+          status: 'pending',
+          attemptCount: 1,
+          lastAttemptedAt: new Date(),
+        });
+        this.messageLogs.getEntityManager().persist(newLog);
+      } else if (log.status !== 'sent') {
+        log.status = 'pending';
+        log.lastAttemptedAt = new Date();
+      }
+    }
+    await this.messageLogs.getEntityManager().flush();
+
+    const jobId = `job_${Date.now()}_${randomUUID().slice(0, 8)}`;
+    const job: BulkMessageJob = {
+      jobId,
+      userId,
+      date: dto.date,
+      totalSelected: dto.customerIds.length,
+      eligibleCount: eligibleCustomers.length,
+      ineligibleCount,
+      sentCount: 0,
+      failedCount: 0,
+      status: 'queued',
+      startedAt: new Date().toISOString(),
+      results: [],
+    };
+    this.bulkJobs.set(jobId, job);
+
+    // Keep memory map bounded
+    if (this.bulkJobs.size > 100) {
+      const oldestKey = this.bulkJobs.keys().next().value;
+      if (oldestKey) this.bulkJobs.delete(oldestKey);
+    }
+
+    // Run bulk dispatch in background job via setImmediate with MikroORM RequestContext
+    // This immediately frees the HTTP response so client does NOT wait or timeout!
+    setImmediate(async () => {
+      try {
+        await RequestContext.create(
+          this.messageLogs.getEntityManager(),
+          async () => {
+            await this.processBulkJob(job, eligibleCustomers, dto.date);
+          },
+        );
+      } catch (bgErr: unknown) {
+        this.logger.error(
+          `[WhatsApp Bulk Job ${job.jobId}] Background runner error: ${this.errorMessage(bgErr)}`,
+        );
+        job.status = 'failed';
+        job.completedAt = new Date().toISOString();
+      }
+    });
+
+    return {
+      success: true,
+      jobId,
+      totalSelected: dto.customerIds.length,
+      eligibleCount: eligibleCustomers.length,
+      ineligibleCount,
+      message: `Bulk message job queued for ${eligibleCustomers.length} eligible customer(s) in background.`,
+    };
+  }
+
+  private async processBulkJob(
+    job: BulkMessageJob,
+    eligibleCustomers: Customer[],
+    dateStr: string,
+  ): Promise<void> {
+    job.status = 'processing';
+    this.logger.log(
+      `[WhatsApp Bulk Job ${job.jobId}] Starting background dispatch for ${eligibleCustomers.length} eligible customers (Date: ${dateStr})`,
+    );
+
+    for (const customer of eligibleCustomers) {
+      try {
+        const res = await this.sendDailyEntry(job.userId, {
+          customerId: customer.cid,
+          date: dateStr,
+        });
+
+        if (res.success) {
+          job.sentCount++;
+          job.results.push({
+            customerId: customer.cid,
+            customerName: customer.name,
+            status: 'sent',
+          });
+        } else {
+          job.failedCount++;
+          job.results.push({
+            customerId: customer.cid,
+            customerName: customer.name,
+            status: 'failed',
+            error: res.error,
+          });
+        }
+      } catch (err: unknown) {
+        job.failedCount++;
+        job.results.push({
+          customerId: customer.cid,
+          customerName: customer.name,
+          status: 'failed',
+          error: this.errorMessage(err),
+        });
+      }
+
+      // Safe delay between WhatsApp messages (150ms)
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+
+    job.status = 'completed';
+    job.completedAt = new Date().toISOString();
+    this.logger.log(
+      `[WhatsApp Bulk Job ${job.jobId}] Finished: ${job.sentCount} sent, ${job.failedCount} failed of ${eligibleCustomers.length} eligible.`,
+    );
+  }
 }
+

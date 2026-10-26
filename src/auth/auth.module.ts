@@ -16,12 +16,20 @@ import { MailService } from './mail.service.js';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'development-only-change-me'),
-        signOptions: {
-          expiresIn: config.get<number>('JWT_EXPIRES_IN_SECONDS', 604800),
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const expiresInRaw = config.get('JWT_EXPIRES_IN_SECONDS');
+        const parsed =
+          expiresInRaw !== undefined ? Number(expiresInRaw) : 2592000;
+        // 2,592,000 seconds = 30 days (1 month)
+        const expiresIn =
+          Number.isFinite(parsed) && parsed > 0 ? parsed : 2592000;
+        return {
+          secret: config.get<string>('JWT_SECRET', 'development-only-change-me'),
+          signOptions: {
+            expiresIn,
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

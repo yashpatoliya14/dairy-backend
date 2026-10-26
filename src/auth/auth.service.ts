@@ -326,6 +326,7 @@ export class AuthService {
     const payload = { sub: user.uid, did: distributor.did, email: user.email };
     return {
       accessToken: this.jwtService.sign(payload),
+      expiresIn: 2592000,
       user: {
         id: user.uid,
         email: user.email,

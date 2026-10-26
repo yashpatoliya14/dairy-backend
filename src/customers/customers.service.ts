@@ -104,6 +104,60 @@ export class CustomersService {
     return entries.map((entry) => this.serializeEntry(entry));
   }
 
+  async listEntriesForMonth(
+    userId: string,
+    customerId: string,
+    year: number,
+    month: number,
+  ) {
+    const customer = await this.customerFor(userId, customerId);
+    const startDate = new Date(
+      Date.UTC(year, month - 1, 1, 0, 0, 0, 0),
+    );
+    const endDate = new Date(
+      Date.UTC(year, month, 0, 23, 59, 59, 999),
+    );
+    const entries = await this.entries.find(
+      {
+        customer,
+        entryDate: { $gte: startDate, $lte: endDate },
+      },
+      { orderBy: { entryDate: 'ASC' } },
+    );
+    const totalLiters = entries.reduce(
+      (sum, e) => sum + Number(e.liters),
+      0,
+    );
+    const totalAmount = entries.reduce(
+      (sum, e) => sum + Number(e.total),
+      0,
+    );
+    return {
+      year,
+      month,
+      daysInMonth: endDate.getUTCDate(),
+      entriesCount: entries.length,
+      totalLiters: Math.round(totalLiters * 100) / 100,
+      totalAmount: Math.round(totalAmount * 100) / 100,
+      entries: entries.map((entry) => this.serializeEntry(entry)),
+    };
+  }
+
+  async deleteEntry(userId: string, customerId: string, entryId: string) {
+    const customer = await this.customerFor(userId, customerId);
+    const entry = await this.entries.findOne({
+      eid: entryId,
+      customer,
+    });
+    if (!entry) {
+      throw new NotFoundException('Milk entry not found');
+    }
+    const em = this.entries.getEntityManager();
+    em.remove(entry);
+    await em.flush();
+    return { deleted: true };
+  }
+
   async notifyWhatsApp(
     userId: string,
     customerId: string,

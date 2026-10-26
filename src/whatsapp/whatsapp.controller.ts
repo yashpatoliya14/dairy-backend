@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -18,6 +19,8 @@ import type { MetaWebhookPayload } from './whatsapp.service.js';
 import {
   BulkTemplateMessageDto,
   SendBillMessageRequest,
+  SendDailyEntryBulkDto,
+  SendDailyEntryDto,
   SendTemplateMessageRequest,
   SendTextMessageRequest,
   UpdateDailyMessageStatusDto,
@@ -63,6 +66,34 @@ export class WhatsAppController {
     @Body() dto: UpdateDailyMessageStatusDto,
   ) {
     return this.whatsappService.updateMessageStatus(request.user.sub, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('send-daily-entry')
+  sendDailyEntry(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: SendDailyEntryDto,
+  ) {
+    return this.whatsappService.sendDailyEntry(request.user.sub, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('send-daily-entry-bulk')
+  sendDailyEntryBulk(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: SendDailyEntryBulkDto,
+  ) {
+    return this.whatsappService.sendBulkDailyEntries(request.user.sub, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('bulk-job/:jobId')
+  getBulkJobStatus(@Param('jobId') jobId: string) {
+    const job = this.whatsappService.getBulkJobStatus(jobId);
+    if (!job) {
+      throw new NotFoundException(`Bulk message job ${jobId} not found`);
+    }
+    return job;
   }
 
   @UseGuards(JwtAuthGuard)

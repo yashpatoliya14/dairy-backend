@@ -165,3 +165,28 @@ export class UpdateDailyMessageStatusDto {
   @IsString()
   errorMessage?: string;
 }
+
+export class SendDailyEntryDto {
+  @IsString()
+  @IsNotEmpty()
+  customerId!: string;
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Date must be YYYY-MM-DD' })
+  date!: string;
+
+  @IsOptional()
+  @IsString()
+  message?: string;
+}
+
+export class SendDailyEntryBulkDto {
+  @IsArray()
+  @IsString({ each: true })
+  customerIds!: string[];
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Date must be YYYY-MM-DD' })
+  date!: string;
+}
+

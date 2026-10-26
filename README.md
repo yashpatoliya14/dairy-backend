@@ -143,7 +143,7 @@ long random JWT secret:
 DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:6543/postgres?sslmode=require
 PORT=3000
 JWT_SECRET=replace-with-a-long-random-secret
-JWT_EXPIRES_IN_SECONDS=604800
+JWT_EXPIRES_IN_SECONDS=2592000
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@example.com
