@@ -57,12 +57,35 @@ export type MetaWebhookPayload = {
   }>;
 };
 
+import { InjectRepository } from '@mikro-orm/nestjs';
+import { EntityRepository } from '@mikro-orm/postgresql';
+import { randomUUID } from 'node:crypto';
+import { DailyMessageLog } from '../entities/daily-message-log.entity.js';
+import { Customer } from '../entities/customer.entity.js';
+import { MilkEntry } from '../entities/milk-entry.entity.js';
+import { Distributor } from '../entities/distributor.entity.js';
+import { User } from '../entities/user.entity.js';
+import { UpdateDailyMessageStatusDto } from './whatsapp.dto.js';
+import { NotFoundException } from '@nestjs/common';
+
 @Injectable()
 export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly httpClient: AxiosInstance;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(DailyMessageLog)
+    private readonly messageLogs: EntityRepository<DailyMessageLog>,
+    @InjectRepository(Customer)
+    private readonly customers: EntityRepository<Customer>,
+    @InjectRepository(MilkEntry)
+    private readonly milkEntries: EntityRepository<MilkEntry>,
+    @InjectRepository(Distributor)
+    private readonly distributors: EntityRepository<Distributor>,
+    @InjectRepository(User)
+    private readonly users: EntityRepository<User>,
+  ) {
     const apiUrl =
       this.config.get<string>('WHATSAPP_API_URL') ??
       `https://graph.facebook.com/${
@@ -333,5 +356,229 @@ export class WhatsAppService {
 
   private errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : 'Unknown WhatsApp error';
+  }
+
+  async getDailySummary(userId: string, dateStr?: string) {
+    const user = await this.users.findOne({ uid: userId });
+    if (!user) throw new NotFoundException('User not found');
+    const distributor = await this.distributors.findOne({ user });
+    if (!distributor) throw new NotFoundException('Distributor not found');
+
+    const effectiveDateStr =
+      dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+        ? dateStr
+        : new Date().toISOString().slice(0, 10);
+
+    const entryDate = new Date(`${effectiveDateStr}T00:00:00.000Z`);
+
+    const allCustomers = await this.customers.find(
+      { distributor },
+      { orderBy: { uniqueNumber: 'ASC' } },
+    );
+
+    const entries = await this.milkEntries.find({
+      distributor,
+      entryDate,
+    });
+    const entryByCid = new Map(entries.map((e) => [e.customer.cid, e]));
+
+    const logs = await this.messageLogs.find({
+      distributor,
+      entryDate,
+    });
+    const logByCid = new Map(logs.map((l) => [l.customer.cid, l]));
+
+    let totalLiters = 0;
+    let totalAmount = 0;
+    let completedEntriesCount = 0;
+    let sentCount = 0;
+    let openedCount = 0;
+    let pendingCount = 0;
+    let failedCount = 0;
+    let notSentCount = 0;
+
+    const customerItems = allCustomers.map((customer) => {
+      const entry = entryByCid.get(customer.cid);
+      const log = logByCid.get(customer.cid);
+      const hasEntry = Boolean(entry);
+
+      const liters = entry
+        ? Number(entry.liters)
+        : Number(customer.liters ?? 0);
+      const price = entry ? Number(entry.price) : Number(customer.price ?? 0);
+      const total = entry
+        ? Number(entry.total)
+        : hasEntry
+        ? liters * price
+        : 0;
+
+      if (hasEntry) {
+        totalLiters += liters;
+        totalAmount += total;
+        completedEntriesCount++;
+      }
+
+      const status = log ? log.status : 'not_sent';
+      if (status === 'sent') sentCount++;
+      else if (status === 'opened_in_whatsapp') openedCount++;
+      else if (status === 'pending') pendingCount++;
+      else if (status === 'failed') failedCount++;
+      else notSentCount++;
+
+      return {
+        customer: {
+          id: customer.cid,
+          name: customer.name,
+          uniqueNumber: customer.uniqueNumber,
+          phoneNumber: customer.phoneNumber ?? null,
+          defaultLiters: Number(customer.liters),
+          defaultPrice: Number(customer.price),
+        },
+        entry: entry
+          ? {
+              id: entry.eid,
+              entryDate: effectiveDateStr,
+              liters,
+              price,
+              total,
+            }
+          : null,
+        hasEntry,
+        messageLog: log
+          ? {
+              id: log.id,
+              status: log.status,
+              attemptCount: log.attemptCount,
+              lastAttemptedAt: log.lastAttemptedAt,
+              messageContent: log.messageContent,
+              providerMessageId: log.providerMessageId,
+              errorMessage: log.errorMessage,
+            }
+          : {
+              status: 'not_sent',
+              attemptCount: 0,
+              lastAttemptedAt: null,
+              messageContent: null,
+              providerMessageId: null,
+              errorMessage: null,
+            },
+      };
+    });
+
+    const missingEntriesCount = Math.max(
+      0,
+      allCustomers.length - completedEntriesCount,
+    );
+
+    return {
+      date: effectiveDateStr,
+      dairyName: distributor.dairyName,
+      summary: {
+        totalLiters: Number(totalLiters.toFixed(2)),
+        totalAmount: Number(totalAmount.toFixed(2)),
+        totalCustomers: allCustomers.length,
+        completedEntriesCount,
+        missingEntriesCount,
+        sentCount,
+        openedCount,
+        pendingCount,
+        failedCount,
+        notSentCount,
+      },
+      customers: customerItems,
+    };
+  }
+
+  async updateMessageStatus(userId: string, dto: UpdateDailyMessageStatusDto) {
+    const user = await this.users.findOne({ uid: userId });
+    if (!user) throw new NotFoundException('User not found');
+    const distributor = await this.distributors.findOne({ user });
+    if (!distributor) throw new NotFoundException('Distributor not found');
+    const customer = await this.customers.findOne({
+      cid: dto.customerId,
+      distributor,
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const entryDate = new Date(`${dto.date}T00:00:00.000Z`);
+    let log = await this.messageLogs.findOne({
+      distributor,
+      customer,
+      entryDate,
+    });
+
+    if (!log) {
+      log = this.messageLogs.create({
+        id: randomUUID(),
+        customer,
+        distributor,
+        user,
+        entryDate,
+        status: dto.status,
+        attemptCount: 1,
+        lastAttemptedAt: new Date(),
+        messageContent: dto.messageContent,
+        providerMessageId: dto.providerMessageId,
+        errorMessage: dto.errorMessage,
+      });
+      this.messageLogs.getEntityManager().persist(log);
+    } else {
+      log.status = dto.status;
+      log.attemptCount += 1;
+      log.lastAttemptedAt = new Date();
+      if (dto.messageContent) log.messageContent = dto.messageContent;
+      if (dto.providerMessageId) log.providerMessageId = dto.providerMessageId;
+      if (dto.errorMessage) {
+        log.errorMessage = dto.errorMessage;
+      } else if (
+        dto.status === 'sent' ||
+        dto.status === 'opened_in_whatsapp'
+      ) {
+        log.errorMessage = undefined;
+      }
+    }
+
+    await this.messageLogs.getEntityManager().flush();
+
+    return {
+      id: log.id,
+      customerId: customer.cid,
+      date: dto.date,
+      status: log.status,
+      attemptCount: log.attemptCount,
+      lastAttemptedAt: log.lastAttemptedAt,
+      errorMessage: log.errorMessage,
+      messageContent: log.messageContent,
+    };
+  }
+
+  async getCustomerMessageHistory(userId: string, customerId: string) {
+    const user = await this.users.findOne({ uid: userId });
+    if (!user) throw new NotFoundException('User not found');
+    const distributor = await this.distributors.findOne({ user });
+    if (!distributor) throw new NotFoundException('Distributor not found');
+    const customer = await this.customers.findOne({
+      cid: customerId,
+      distributor,
+    });
+    if (!customer) throw new NotFoundException('Customer not found');
+
+    const logs = await this.messageLogs.find(
+      { distributor, customer },
+      { orderBy: { entryDate: 'DESC' }, limit: 30 },
+    );
+
+    return logs.map((log) => ({
+      id: log.id,
+      date:
+        log.entryDate instanceof Date
+          ? log.entryDate.toISOString().slice(0, 10)
+          : String(log.entryDate).slice(0, 10),
+      status: log.status,
+      attemptCount: log.attemptCount,
+      lastAttemptedAt: log.lastAttemptedAt,
+      messageContent: log.messageContent,
+      errorMessage: log.errorMessage,
+    }));
   }
 }

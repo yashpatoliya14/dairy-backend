@@ -9,6 +9,7 @@ import { Distributor } from './entities/distributor.entity.js';
 import { Settings } from './entities/settings.entity.js';
 import { User } from './entities/user.entity.js';
 import { MilkEntry } from './entities/milk-entry.entity.js';
+import { DailyMessageLog } from './entities/daily-message-log.entity.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { DistributorsModule } from './distributors/distributors.module.js';
 import { SettingsModule } from './settings/settings.module.js';
@@ -26,7 +27,8 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         clientUrl: configService.getOrThrow<string>('DATABASE_URL'),
-        entities: [User, Distributor, Customer, Settings, MilkEntry],
+        schema: 'public',
+        entities: [User, Distributor, Customer, Settings, MilkEntry, DailyMessageLog],
         driverOptions: {
           ssl: { rejectUnauthorized: false },
         },

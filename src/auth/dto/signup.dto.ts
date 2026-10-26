@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Matches,
   MinLength,
@@ -29,4 +30,8 @@ export class SignupDto {
   @IsString()
   @IsNotEmpty()
   dairyName!: string;
+
+  @IsOptional()
+  @IsString()
+  phoneNumber?: string;
 }

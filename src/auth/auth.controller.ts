@@ -18,6 +18,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { ResendVerificationDto } from './dto/resend-verification.dto.js';
+import { UpdateProfileDto } from './dto/update-profile.dto.js';
 
 @Controller('auth')
 export class AuthController {
@@ -57,6 +58,15 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   profile(@Req() request: Request & { user: AuthenticatedUser }) {
     return this.authService.profile(request.user.sub);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  updateProfile(
+    @Req() request: Request & { user: AuthenticatedUser },
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(request.user.sub, dto);
   }
 
   @Patch('password')

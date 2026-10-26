@@ -1,5 +1,7 @@
 import {
   IsArray,
+  IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
@@ -57,4 +59,30 @@ export class BulkTemplateMessageDto {
   @IsOptional()
   @IsString()
   languageCode?: string;
+}
+
+export class UpdateDailyMessageStatusDto {
+  @IsString()
+  @IsNotEmpty()
+  customerId!: string;
+
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Date must be YYYY-MM-DD' })
+  date!: string;
+
+  @IsString()
+  @IsIn(['not_sent', 'pending', 'opened_in_whatsapp', 'sent', 'failed'])
+  status!: 'not_sent' | 'pending' | 'opened_in_whatsapp' | 'sent' | 'failed';
+
+  @IsOptional()
+  @IsString()
+  messageContent?: string;
+
+  @IsOptional()
+  @IsString()
+  providerMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  errorMessage?: string;
 }
