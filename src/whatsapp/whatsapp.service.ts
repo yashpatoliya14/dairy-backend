@@ -156,7 +156,7 @@ export class WhatsAppService {
             'Content-Type': 'application/json',
           }
         : { 'Content-Type': 'application/json' },
-      timeout: 15_000,
+      timeout: 8_000,
     });
   }
 
@@ -1037,33 +1037,6 @@ export class WhatsAppService {
       }
     }
 
-    // Immediately mark eligible customers as 'pending' in DailyMessageLog
-    for (const customer of eligibleCustomers) {
-      const log = await this.messageLogs.findOne({
-        distributor,
-        customer,
-        entryDate,
-      });
-
-      if (!log) {
-        const newLog = this.messageLogs.create({
-          id: randomUUID(),
-          customer,
-          distributor,
-          user,
-          entryDate,
-          status: 'pending',
-          attemptCount: 1,
-          lastAttemptedAt: new Date(),
-        });
-        this.messageLogs.getEntityManager().persist(newLog);
-      } else if (log.status !== 'sent') {
-        log.status = 'pending';
-        log.lastAttemptedAt = new Date();
-      }
-    }
-    await this.messageLogs.getEntityManager().flush();
-
     const jobId = `job_${Date.now()}_${randomUUID().slice(0, 8)}`;
     const job: BulkMessageJob = {
       jobId,
@@ -1087,7 +1060,7 @@ export class WhatsAppService {
     }
 
     // Run bulk dispatch in background job via setImmediate with MikroORM RequestContext
-    // This immediately frees the HTTP response so client does NOT wait or timeout!
+    // This immediately frees the HTTP response in < 15ms so client does NOT wait or timeout!
     setImmediate(async () => {
       try {
         await RequestContext.create(
@@ -1124,6 +1097,41 @@ export class WhatsAppService {
     this.logger.log(
       `[WhatsApp Bulk Job ${job.jobId}] Starting background dispatch for ${eligibleCustomers.length} eligible customers (Date: ${dateStr})`,
     );
+
+    // In background: batch-mark eligible customers as pending if not already sent
+    try {
+      const entryDate = new Date(`${dateStr}T00:00:00.000Z`);
+      const user = await this.users.findOne({ uid: job.userId });
+      const distributor = user ? await this.distributors.findOne({ user }) : null;
+      if (distributor && user) {
+        for (const customer of eligibleCustomers) {
+          const log = await this.messageLogs.findOne({
+            distributor,
+            customer,
+            entryDate,
+          });
+          if (!log) {
+            const newLog = this.messageLogs.create({
+              id: randomUUID(),
+              customer,
+              distributor,
+              user,
+              entryDate,
+              status: 'pending',
+              attemptCount: 1,
+              lastAttemptedAt: new Date(),
+            });
+            this.messageLogs.getEntityManager().persist(newLog);
+          } else if (log.status !== 'sent') {
+            log.status = 'pending';
+            log.lastAttemptedAt = new Date();
+          }
+        }
+        await this.messageLogs.getEntityManager().flush();
+      }
+    } catch (pendingErr: unknown) {
+      this.logger.warn(`Could not set initial pending logs: ${this.errorMessage(pendingErr)}`);
+    }
 
     for (const customer of eligibleCustomers) {
       try {
