@@ -1,6 +1,7 @@
-import {
+﻿import {
   Body,
   Controller,
+  Delete,
   Get,
   Logger,
   Param,
@@ -55,8 +56,26 @@ export class CustomersController {
   listEntries(
     @Req() request: AuthenticatedRequest,
     @Param('customerId') customerId: string,
+    @Query('month') month?: string,
   ) {
-    return this.customersService.listEntries(request.user.sub, customerId);
+    return this.customersService.listEntries(
+      request.user.sub,
+      customerId,
+      month,
+    );
+  }
+
+  @Delete(':customerId/entries/:entryId')
+  deleteEntry(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId') customerId: string,
+    @Param('entryId') entryId: string,
+  ) {
+    return this.customersService.deleteEntry(
+      request.user.sub,
+      customerId,
+      entryId,
+    );
   }
 
   @Post(':customerId/entries/notify')

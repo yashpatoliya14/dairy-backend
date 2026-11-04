@@ -1,4 +1,4 @@
-import { IsDateString, IsNumber, Min } from 'class-validator';
+﻿import { IsDateString, IsNumber, Min } from 'class-validator';
 
 export class CreateMilkEntryDto {
   @IsDateString()

@@ -154,15 +154,15 @@ export class AuthService {
     const user = await this.users.findOne({ uid });
     if (!user) throw new UnauthorizedException('User account not found');
     const distributor = await this.distributors.findOne({ user });
-    if (!distributor) {
-      throw new UnauthorizedException('Distributor account is not configured');
-    }
     return {
       id: user.uid,
       name: `${user.firstName} ${user.lastName}`.trim(),
       firstName: user.firstName,
       lastName: user.lastName,
-      dairyName: distributor.dairyName,
+      email: user.email,
+      phoneNumber: user.phoneNumber ?? '',
+      role: user.role,
+      dairyName: distributor?.dairyName || 'Dairy Desk',
     };
   }
 
