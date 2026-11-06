@@ -52,7 +52,7 @@ export class CustomersController {
     return this.customersService.createEntry(request.user.sub, customerId, dto);
   }
 
-  @Get(':customerId/entries')
+  @Get(':customerId/entries') 
   listEntries(
     @Req() request: AuthenticatedRequest,
     @Param('customerId') customerId: string,
