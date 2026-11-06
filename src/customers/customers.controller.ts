@@ -57,7 +57,20 @@ export class CustomersController {
     @Req() request: AuthenticatedRequest,
     @Param('customerId') customerId: string,
     @Query('month') month?: string,
+    @Query('year') year?: string,
   ) {
+    if (year && month) {
+      const y = parseInt(year, 10);
+      const m = parseInt(month, 10);
+      if (!isNaN(y) && !isNaN(m)) {
+        return this.customersService.listEntriesForMonth(
+          request.user.sub,
+          customerId,
+          y,
+          m,
+        );
+      }
+    }
     return this.customersService.listEntries(
       request.user.sub,
       customerId,
