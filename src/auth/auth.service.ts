@@ -37,7 +37,7 @@ export class AuthService {
     private readonly distributors: EntityRepository<Distributor>,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
-  ) {}
+  ) { }
 
   async signup(dto: SignupDto) {
     const rawEmail = dto.email?.trim() ?? '';
@@ -238,17 +238,15 @@ export class AuthService {
     const user = await this.users.findOne({ uid });
     if (!user) throw new UnauthorizedException('User account not found');
     const distributor = await this.distributors.findOne({ user });
-    if (!distributor) {
-      throw new UnauthorizedException('Distributor account is not configured');
-    }
     return {
       id: user.uid,
       name: `${user.firstName} ${user.lastName}`.trim(),
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-      phoneNumber: user.phoneNumber ?? null,
-      dairyName: distributor.dairyName,
+      phoneNumber: user.phoneNumber ?? '',
+      role: user.role,
+      dairyName: distributor?.dairyName || 'Dairy Desk',
     };
   }
 

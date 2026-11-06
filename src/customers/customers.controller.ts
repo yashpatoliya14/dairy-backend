@@ -56,18 +56,13 @@ export class CustomersController {
   listEntries(
     @Req() request: AuthenticatedRequest,
     @Param('customerId') customerId: string,
-    @Query('year') year?: string,
     @Query('month') month?: string,
   ) {
-    if (year && month) {
-      return this.customersService.listEntriesForMonth(
-        request.user.sub,
-        customerId,
-        parseInt(year, 10),
-        parseInt(month, 10),
-      );
-    }
-    return this.customersService.listEntries(request.user.sub, customerId);
+    return this.customersService.listEntries(
+      request.user.sub,
+      customerId,
+      month,
+    );
   }
 
   @Delete(':customerId/entries/:entryId')

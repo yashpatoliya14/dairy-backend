@@ -72,11 +72,12 @@ export class CustomersService {
     const customer = await this.customerFor(userId, customerId);
     const distributor = await this.distributorFor(userId);
     const entryDate = new Date(`${dto.entryDate}T00:00:00.000Z`);
+    const total = Math.round((dto.liters * dto.price + Number.EPSILON) * 100) / 100;
     const existing = await this.entries.findOne({ customer, entryDate });
     if (existing) {
       existing.liters = dto.liters;
       existing.price = dto.price;
-      existing.total = dto.liters * dto.price;
+      existing.total = total;
       await this.entries.getEntityManager().flush();
       return this.serializeEntry(existing);
     }
@@ -88,20 +89,57 @@ export class CustomersService {
       entryDate,
       liters: dto.liters,
       price: dto.price,
-      total: dto.liters * dto.price,
+      total,
     });
     this.entries.getEntityManager().persist(entry);
     await this.entries.getEntityManager().flush();
     return this.serializeEntry(entry);
   }
 
-  async listEntries(userId: string, customerId: string) {
+  async listEntries(userId: string, customerId: string, month?: string) {
     const customer = await this.customerFor(userId, customerId);
+    if (month && /^\d{4}-\d{2}$/.test(month.trim())) {
+      const [yearStr, monthStr] = month.trim().split('-');
+      const year = Number.parseInt(yearStr, 10);
+      const m = Number.parseInt(monthStr, 10);
+      const daysInMonth = new Date(year, m, 0).getDate();
+      const lastDayStr = String(daysInMonth).padStart(2, '0');
+      const startDate = new Date(`${yearStr}-${monthStr}-01T00:00:00.000Z`);
+      const endDate = new Date(
+        `${yearStr}-${monthStr}-${lastDayStr}T23:59:59.999Z`,
+      );
+      const entries = await this.entries.find(
+        {
+          customer,
+          entryDate: { $gte: startDate, $lte: endDate },
+        },
+        { orderBy: { entryDate: 'ASC' } },
+      );
+      return entries.map((entry) => this.serializeEntry(entry));
+    }
+
     const entries = await this.entries.find(
       { customer },
       { orderBy: { entryDate: 'DESC' }, limit: 31 },
     );
     return entries.map((entry) => this.serializeEntry(entry));
+  }
+
+  async deleteEntry(userId: string, customerId: string, entryId: string) {
+    const customer = await this.customerFor(userId, customerId);
+    const distributor = await this.distributorFor(userId);
+    const entry = await this.entries.findOne({
+      eid: entryId,
+      customer,
+      distributor,
+    });
+    if (!entry) {
+      throw new NotFoundException('Milk entry not found');
+    }
+    const em = this.entries.getEntityManager();
+    em.remove(entry);
+    await em.flush();
+    return { success: true, message: 'Milk entry deleted successfully' };
   }
 
   async listEntriesForMonth(
@@ -143,21 +181,6 @@ export class CustomersService {
     };
   }
 
-  async deleteEntry(userId: string, customerId: string, entryId: string) {
-    const customer = await this.customerFor(userId, customerId);
-    const entry = await this.entries.findOne({
-      eid: entryId,
-      customer,
-    });
-    if (!entry) {
-      throw new NotFoundException('Milk entry not found');
-    }
-    const em = this.entries.getEntityManager();
-    em.remove(entry);
-    await em.flush();
-    return { deleted: true };
-  }
-
   async notifyWhatsApp(
     userId: string,
     customerId: string,
@@ -177,10 +200,19 @@ export class CustomersService {
 
   async list(userId: string, search?: string) {
     const distributor = await this.distributorFor(userId);
+    const term = search?.trim();
+    const where = term
+      ? {
+          distributor,
+          $or: [
+            { name: { $ilike: `%${term}%` } },
+            { phoneNumber: { $ilike: `%${term}%` } },
+            { uniqueNumber: { $ilike: `%${term}%` } },
+          ],
+        }
+      : { distributor };
     const customers = await this.customers.find(
-      search?.trim()
-        ? { distributor, uniqueNumber: { $ilike: `%${search.trim()}%` } }
-        : { distributor },
+      where,
       { orderBy: { uniqueNumber: 'ASC' } },
     );
     return customers.map((customer) => this.serialize(customer));
