@@ -1,4 +1,4 @@
-﻿import {
+import {
   BadGatewayException,
   Injectable,
   Logger,
@@ -45,6 +45,9 @@ export interface SendBillMessageDto {
   date?: string; // optional, e.g. "21-Oct-2026"
   deliverySession?: string; // 'Morning' | 'Evening' | 'Full Day'
   previousDue?: number; // optional outstanding balance
+  monthToDateBill?: number; // month-to-date running bill till today
+  advanceCredit?: number; // advance credit
+  netPayable?: number; // net total payable
   notes?: string;
   distributorName?: string;
   distributorPhone?: string;
@@ -274,15 +277,21 @@ export class WhatsAppService {
     const liters = isMonthly
       ? Number(dto.totalLiters ?? dto.liters ?? 0)
       : Number(dto.liters ?? 0);
+    const rate = Number(dto.ratePerLiter ?? 0);
     const amount = isMonthly
       ? Number(
           dto.monthlyAmount ??
             dto.totalAmount ??
-            liters * Number(dto.ratePerLiter),
+            liters * rate,
         )
-      : Number(dto.totalAmount ?? liters * Number(dto.ratePerLiter));
+      : Number(dto.totalAmount ?? liters * rate);
     const previousDue = Number(dto.previousDue ?? 0);
-    const totalPayable = amount + previousDue;
+    const advanceCredit = Number(dto.advanceCredit ?? 0);
+    const monthToDateBill = Number(dto.monthToDateBill ?? amount);
+    const totalPayable = isMonthly
+      ? Number(dto.netPayable ?? (amount + previousDue - advanceCredit))
+      : Number(monthToDateBill + previousDue);
+
     const dateOrMonth =
       (isMonthly ? dto.monthName : dto.date) ??
       new Date().toLocaleDateString('en-IN', {
@@ -290,59 +299,118 @@ export class WhatsAppService {
         month: 'short',
         year: 'numeric',
       });
+    const sessionSuffix = dto.deliverySession ? ` (${dto.deliverySession})` : '';
     const distributorName =
       dto.distributorName ??
       this.config.get<string>('WHATSAPP_DISTRIBUTOR_NAME') ??
-      'Haresh Sambad';
+      'Dairy Owner';
     const distributorPhone =
       dto.distributorPhone ??
       this.config.get<string>('WHATSAPP_DISTRIBUTOR_PHONE') ??
       '+91 9104152524';
 
-    const formattedMessage =
-      `Milk Billing & Delivery Update\n\n` +
-      `Hello ${dto.customerName},\n\n` +
-      `Your milk bill update for ${dateOrMonth} has been generated.\n\n` +
-      `Details:\n` +
-      `• Quantity: ${liters.toFixed(1)} L\n` +
-      `• Rate: ₹${Number(dto.ratePerLiter).toFixed(2)}/L\n` +
-      `• Total Amount Due: ₹${totalPayable.toFixed(2)}\n\n` +
-      `Please review your delivery details. For any queries or corrections, please contact your distributor:\n\n` +
-      `Distributor Name: ${distributorName}\n` +
-      `Contact Number: ${distributorPhone}\n` +
-      `They will be happy to assist you.\n` +
-      `Dairy Desk Management`;
+    const formattedMessage = isMonthly
+      ? `🧾 *MILK BILL STATEMENT*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `Hello *${dto.customerName}*,\n\n` +
+        `Your milk bill for *${dateOrMonth}* has been generated.\n\n` +
+        `📋 *DELIVERY SUMMARY:*\n` +
+        `• Active Delivery Days: ${dto.totalDays ?? 30} Days\n` +
+        `• Total Quantity: ${liters.toFixed(1)} L\n` +
+        `• Rate per Liter: ₹${rate.toFixed(2)}/L\n\n` +
+        `💰 *BILL BREAKDOWN:*\n` +
+        `• Monthly Milk Bill: ₹${amount.toFixed(2)}\n` +
+        `• Past Overdue: ₹${previousDue.toFixed(2)}\n` +
+        `• Advance / Credits: ₹${advanceCredit.toFixed(2)}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `⭐ *NET TOTAL PAYABLE: ₹${totalPayable.toFixed(2)}*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📲 *Payment Options:*\n` +
+        `Cash, UPI (GPay / PhonePe / Paytm), or Bank Transfer.\n\n` +
+        `📞 *Dairy Owner Contact:*\n` +
+        `• Name: ${distributorName}\n` +
+        `• Contact: ${distributorPhone}\n\n` +
+        `Thank you for your business! Please settle your bill on time. 🥛`
+      : `🥛 *DAILY MILK COLLECTION UPDATE*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `Hello *${dto.customerName}*,\n\n` +
+        `Your milk delivery has been recorded successfully:\n\n` +
+        `📅 *Date & Shift:* ${dateOrMonth}${sessionSuffix}\n` +
+        `🥛 *Today's Milk:* ${liters.toFixed(1)} L @ ₹${rate.toFixed(2)}/L\n` +
+        `💵 *Today's Amount:* ₹${amount.toFixed(2)}\n\n` +
+        `📊 *ACCOUNT BALANCE STATUS:*\n` +
+        `• Current Month (Till Date): ₹${monthToDateBill.toFixed(2)}\n` +
+        `• Past Overdue: ₹${previousDue.toFixed(2)}\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `💳 *TOTAL AMOUNT TO PAY: ₹${totalPayable.toFixed(2)}*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📞 *Dairy Owner Contact:*\n` +
+        `• Name: ${distributorName}\n` +
+        `• Contact: ${distributorPhone}\n\n` +
+        `Thank you for choosing our dairy service! 🥛`;
 
     const normalizedTo = this.normalizePhoneNumber(dto.to);
     const maskedTo = this.maskPhoneNumber(normalizedTo);
 
     if (dto.useTemplate !== false) {
-      const templateName =
-        dto.templateName ??
-        this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
-        'dairy_milk_bill_update';
+      const defaultTemplate = isMonthly
+        ? (this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ?? 'monthly_milk_bill_settlement')
+        : (this.config.get<string>('WHATSAPP_DAILY_TEMPLATE_NAME') ?? 'daily_milk_delivery_update');
+      const templateName = dto.templateName ?? defaultTemplate;
       const languageCode =
         dto.languageCode ??
         this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ??
         'en';
 
+      let bodyParameters: string[];
+      if (templateName === 'daily_milk_delivery_update' || (!isMonthly && templateName.includes('daily'))) {
+        bodyParameters = [
+          dto.customerName,
+          `${dateOrMonth}${sessionSuffix}`,
+          `${liters.toFixed(1)} L`,
+          rate.toFixed(2),
+          amount.toFixed(2),
+          monthToDateBill.toFixed(2),
+          previousDue.toFixed(2),
+          totalPayable.toFixed(2),
+          distributorName,
+          distributorPhone,
+        ];
+      } else if (templateName === 'monthly_milk_bill_settlement' || isMonthly) {
+        bodyParameters = [
+          dto.customerName,
+          dto.monthName ?? dateOrMonth,
+          `${dto.totalDays ?? 30} Days`,
+          `${liters.toFixed(1)} L`,
+          rate.toFixed(2),
+          amount.toFixed(2),
+          previousDue.toFixed(2),
+          advanceCredit.toFixed(2),
+          totalPayable.toFixed(2),
+          distributorName,
+          distributorPhone,
+        ];
+      } else {
+        bodyParameters = [
+          dto.customerName,
+          dateOrMonth,
+          `${liters.toFixed(1)} L`,
+          rate.toFixed(2),
+          totalPayable.toFixed(2),
+          distributorName,
+          distributorPhone,
+        ];
+      }
+
       this.logger.log(
-        `Sending bill template "${templateName}" (${languageCode}) with 7 params to ${maskedTo} (amount: ₹${totalPayable.toFixed(2)})`,
+        `Sending bill template "${templateName}" (${languageCode}) with ${bodyParameters.length} params to ${maskedTo} (amount: ₹${totalPayable.toFixed(2)})`,
       );
 
       const { messageId } = await this.sendTemplateMessage({
         to: normalizedTo,
         templateName,
         languageCode,
-        bodyParameters: [
-          dto.customerName,
-          dateOrMonth,
-          `${liters.toFixed(1)} L`,
-          Number(dto.ratePerLiter).toFixed(2),
-          totalPayable.toFixed(2),
-          distributorName,
-          distributorPhone,
-        ],
+        bodyParameters,
       });
 
       return {
@@ -867,17 +935,18 @@ export class WhatsAppService {
     if (!customer) throw new NotFoundException('Customer not found');
 
     const phone = customer.phoneNumber?.trim();
-    if (!phone) {
+    const cleanPhone = (phone ?? '').replace(/\D/g, '');
+    if (!phone || cleanPhone.length < 10) {
       await this.updateMessageStatus(userId, {
         customerId: customer.cid,
         date: dto.date,
         status: 'failed',
-        errorMessage: 'Customer phone number is missing',
+        errorMessage: 'Customer has no valid mobile number. Skipped API call.',
       });
       return {
         success: false,
         status: 'failed',
-        error: 'Customer phone number is missing',
+        error: 'Customer has no valid mobile number. Skipped API call.',
       };
     }
 
@@ -916,12 +985,23 @@ export class WhatsAppService {
       '+91 7600579310';
 
     try {
+      // Compute month-to-date bill for this customer (1st of month to entryDate)
+      const startOfMonth = new Date(Date.UTC(entryDate.getUTCFullYear(), entryDate.getUTCMonth(), 1));
+      const endOfEntryDate = new Date(Date.UTC(entryDate.getUTCFullYear(), entryDate.getUTCMonth(), entryDate.getUTCDate(), 23, 59, 59, 999));
+      const monthEntries = await this.milkEntries.find({
+        distributor,
+        customer,
+        entryDate: { $gte: startOfMonth, $lte: endOfEntryDate },
+      });
+      const monthToDateBill = monthEntries.reduce((sum, e) => sum + Number(e.total ?? 0), 0);
+
       const billResult = await this.sendBillMessage({
         to: phone,
         customerName: customer.name,
         liters,
         ratePerLiter: price,
         totalAmount: total,
+        monthToDateBill: monthToDateBill > 0 ? monthToDateBill : total,
         type: 'daily',
         date: formattedDate,
         distributorName,
@@ -1030,7 +1110,10 @@ export class WhatsAppService {
     let ineligibleCount = 0;
 
     for (const customer of customers) {
-      if (entryByCid.has(customer.cid)) {
+      const cleanCustomerPhone = (customer.phoneNumber ?? '').replace(/\D/g, '');
+      const hasValidPhone = cleanCustomerPhone.length >= 10;
+      const hasEntry = entryByCid.has(customer.cid);
+      if (hasEntry && hasValidPhone) {
         eligibleCustomers.push(customer);
       } else {
         ineligibleCount++;

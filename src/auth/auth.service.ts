@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@mikro-orm/nestjs';
@@ -30,6 +31,7 @@ import {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   constructor(
     @InjectRepository(User)
     private readonly users: EntityRepository<User>,
@@ -200,14 +202,43 @@ export class AuthService {
     }
 
     const user = await this.users.findOne({ email });
+    let devOtp: string | undefined;
     if (user) {
       const code = this.createCode();
       user.resetCodeHash = this.hashCode(code);
       user.resetExpiresAt = this.expiresAt();
       await this.users.getEntityManager().flush();
-      await this.mailService.sendCode(email, code, 'reset');
+      try {
+        await this.mailService.sendCode(email, code, 'reset');
+      } catch (err: any) {
+        this.logger.error(
+          `Failed to send reset code email to ${email}: ${err?.message || err}`,
+        );
+        if (
+          process.env.NODE_ENV !== 'production' ||
+          process.env.DEV_OTP_PREVIEW === 'true' ||
+          !this.mailService.isConfigured()
+        ) {
+          devOtp = code;
+        } else {
+          throw new BadRequestException(
+            err?.message ||
+              'Unable to send reset email at this moment. Please check email settings or try again.',
+          );
+        }
+      }
+
+      if (
+        process.env.NODE_ENV !== 'production' ||
+        process.env.DEV_OTP_PREVIEW === 'true'
+      ) {
+        devOtp = code;
+      }
     }
-    return { message: 'If that email is registered, a reset code was sent' };
+    return {
+      message: 'If that email is registered, a reset code was sent',
+      ...(devOtp ? { devOtp } : {}),
+    };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
@@ -223,7 +254,7 @@ export class AuthService {
       !user.resetCodeHash ||
       !user.resetExpiresAt ||
       user.resetExpiresAt < new Date() ||
-      user.resetCodeHash !== this.hashCode(dto.code)
+      user.resetCodeHash !== this.hashCode((dto.code ?? '').trim())
     ) {
       throw new UnauthorizedException('Invalid or expired reset code');
     }

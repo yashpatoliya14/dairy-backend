@@ -93,6 +93,18 @@ export class SendBillMessageRequest {
   previousDue?: number;
 
   @IsOptional()
+  @IsNumber()
+  monthToDateBill?: number;
+
+  @IsOptional()
+  @IsNumber()
+  advanceCredit?: number;
+
+  @IsOptional()
+  @IsNumber()
+  netPayable?: number;
+
+  @IsOptional()
   @IsString()
   notes?: string;
 
