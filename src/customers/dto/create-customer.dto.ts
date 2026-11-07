@@ -1,12 +1,12 @@
-﻿import {
+import {
   IsIn,
   IsNumber,
   IsOptional,
   IsString,
   IsNotEmpty,
   Min,
-  Matches,
 } from 'class-validator';
+import { IsCustomerPhoneNumber } from './customer-phone.validator.js';
 
 export class CreateCustomerDto {
   @IsString()
@@ -25,7 +25,7 @@ export class CreateCustomerDto {
 
   @IsString()
   @IsNotEmpty()
-  @Matches(/^[0-9+()\-\s]{7,20}$/, { message: 'Enter a valid phone number' })
+  @IsCustomerPhoneNumber()
   phoneNumber!: string;
 
   @IsIn(['sms', 'whatsapp'])

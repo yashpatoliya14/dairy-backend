@@ -1,11 +1,11 @@
-﻿import {
+import {
   IsIn,
   IsNumber,
   IsOptional,
   IsString,
-  Matches,
   Min,
 } from 'class-validator';
+import { IsCustomerPhoneNumber } from './customer-phone.validator.js';
 
 export class UpdateCustomerDto {
   @IsOptional()
@@ -24,7 +24,7 @@ export class UpdateCustomerDto {
 
   @IsOptional()
   @IsString()
-  @Matches(/^[0-9+()\-\s]{7,20}$/, { message: 'Enter a valid phone number' })
+  @IsCustomerPhoneNumber()
   phoneNumber?: string;
 
   @IsOptional()
