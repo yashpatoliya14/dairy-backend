@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.1',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.2',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 2,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 3,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.1',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.2',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,13 +45,13 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Upgraded WhatsApp Cloud API with detailed daily & monthly templates\n' +
-          '• Reconciled Customer Bills & Record Payment form with FIFO overdue ledger\n' +
-          '• Automatic skipping of customers with missing or invalid phone numbers\n' +
-          '• Modern WhatsApp billing preview with net payable calculations',
+        '• Revamped Distributor Profile with editable contact details, dairy settings & live stats\n' +
+          '• Automatic background update system with mandatory upgrade lockout\n' +
+          '• Upgraded WhatsApp Cloud API with detailed daily & monthly templates\n' +
+          '• Reconciled Customer Bills & Record Payment form with FIFO overdue ledger',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        '/app/download-latest',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.2/app-release.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.6 MB',
       publishedAt: new Date().toISOString(),
     };
