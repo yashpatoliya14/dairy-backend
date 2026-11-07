@@ -247,41 +247,46 @@ export class AuthService {
     }
 
     const user = await this.users.findOne({ email });
-    let devOtp: string | undefined;
-    if (user) {
-      const code = this.createCode();
-      user.resetCodeHash = this.hashCode(code);
-      user.resetExpiresAt = this.expiresAt();
-      await this.users.getEntityManager().flush();
-      try {
-        await this.mailService.sendCode(email, code, 'reset');
-      } catch (err: any) {
-        this.logger.error(
-          `Failed to send reset code email to ${email}: ${err?.message || err}`,
-        );
-        if (
-          process.env.NODE_ENV !== 'production' ||
-          process.env.DEV_OTP_PREVIEW === 'true' ||
-          !this.mailService.isConfigured()
-        ) {
-          devOtp = code;
-        } else {
-          throw new BadRequestException(
-            err?.message ||
-              'Unable to send reset email at this moment. Please check email settings or try again.',
-          );
-        }
-      }
+    if (!user) {
+      throw new BadRequestException(
+        'No account found with this email address',
+      );
+    }
 
+    let devOtp: string | undefined;
+    const code = this.createCode();
+    user.resetCodeHash = this.hashCode(code);
+    user.resetExpiresAt = this.expiresAt();
+    await this.users.getEntityManager().flush();
+    try {
+      await this.mailService.sendCode(email, code, 'reset');
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to send reset code email to ${email}: ${err?.message || err}`,
+      );
       if (
         process.env.NODE_ENV !== 'production' ||
-        process.env.DEV_OTP_PREVIEW === 'true'
+        process.env.DEV_OTP_PREVIEW === 'true' ||
+        !this.mailService.isConfigured()
       ) {
         devOtp = code;
+      } else {
+        throw new BadRequestException(
+          err?.message ||
+            'Unable to send reset email at this moment. Please check email settings or try again.',
+        );
       }
     }
+
+    if (
+      process.env.NODE_ENV !== 'production' ||
+      process.env.DEV_OTP_PREVIEW === 'true'
+    ) {
+      devOtp = code;
+    }
+
     return {
-      message: 'If that email is registered, a reset code was sent',
+      message: 'Reset code sent to your email address',
       ...(devOtp ? { devOtp } : {}),
     };
   }
