@@ -1,9 +1,10 @@
-﻿import {
+import {
   Body,
   Controller,
   Get,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -37,6 +38,11 @@ export class AuthController {
   @Post('resend-verification')
   resendVerification(@Body() dto: ResendVerificationDto) {
     return this.authService.resendVerification(dto);
+  }
+
+  @Get('registered-email')
+  getRegisteredEmail(@Query('query') query?: string) {
+    return this.authService.getRegisteredEmail(query);
   }
 
   @Post('forgot-password')

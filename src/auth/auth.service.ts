@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@mikro-orm/nestjs';
@@ -192,6 +193,50 @@ export class AuthService {
     await this.users.getEntityManager().flush();
     await this.mailService.sendCode(email, code, 'verify');
     return { message: 'Verification code sent to your email' };
+  }
+
+  async getRegisteredEmail(query?: string) {
+    const cleanQuery = query?.trim().toLowerCase();
+    let user: User | null = null;
+    let distributor: Distributor | null = null;
+
+    if (cleanQuery) {
+      if (cleanQuery.includes('@')) {
+        user = await this.users.findOne({ email: cleanQuery });
+      } else if (isPhoneNumber(cleanQuery)) {
+        user = await this.users.findOne({
+          phoneNumber: { $in: getPhoneSearchVariants(cleanQuery) },
+        });
+      } else {
+        distributor = await this.distributors.findOne({
+          dairyName: { $ilike: `%${cleanQuery}%` },
+        });
+        if (distributor) {
+          user = await this.users.findOne({ uid: distributor.user.uid });
+        }
+      }
+    }
+
+    if (!user) {
+      distributor = await this.distributors.findOne({}, { orderBy: { did: 'ASC' } });
+      if (distributor) {
+        user = await this.users.findOne({ uid: distributor.user.uid });
+      }
+    }
+
+    if (!user) {
+      throw new NotFoundException('No registered dairy account found');
+    }
+
+    if (!distributor) {
+      distributor = await this.distributors.findOne({ user });
+    }
+
+    return {
+      email: user.email,
+      dairyName: distributor?.dairyName || 'Dairy Desk',
+      hasPhone: Boolean(user.phoneNumber),
+    };
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
