@@ -19,32 +19,32 @@ describe('AppController', () => {
 
   describe('version check', () => {
     it('detects update available when client version is older than latest', () => {
-      const res = appController.getAppVersion('1.0.1', '2');
+      const res = appController.getAppVersion('1.0.2', '3');
       expect(res.isUpdateAvailable).toBe(true);
       expect(res.mustForceUpdate).toBe(true);
-      expect(res.latestVersion).toBe('1.0.2');
+      expect(res.latestVersion).toBe('1.0.3');
       expect(res.downloadUrl).toContain('app-release.apk');
     });
 
     it('returns isUpdateAvailable false when client is on latest version', () => {
-      const res = appController.getAppVersion('1.0.2', '3');
+      const res = appController.getAppVersion('1.0.3', '4');
       expect(res.isUpdateAvailable).toBe(false);
       expect(res.mustForceUpdate).toBe(false);
     });
 
     it('allows updating version configuration dynamically', () => {
       const updated = appController.updateVersionConfig({
-        latestVersion: '1.0.3',
-        buildNumber: 4,
+        latestVersion: '1.0.4',
+        buildNumber: 5,
         forceUpdate: false,
         minSupportedVersion: '1.0.1',
       });
 
-      expect(updated.latestVersion).toBe('1.0.3');
-      expect(updated.buildNumber).toBe(4);
+      expect(updated.latestVersion).toBe('1.0.4');
+      expect(updated.buildNumber).toBe(5);
       expect(updated.forceUpdate).toBe(false);
 
-      const check = appController.getAppVersion('1.0.2', '3');
+      const check = appController.getAppVersion('1.0.3', '4');
       expect(check.isUpdateAvailable).toBe(true);
       expect(check.mustForceUpdate).toBe(false);
     });
