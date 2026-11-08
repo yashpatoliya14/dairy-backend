@@ -92,7 +92,14 @@ export class AuthService {
     user.verificationExpiresAt = this.expiresAt();
     em.persist([user, distributor]);
     await em.flush();
-    await this.mailService.sendCode(email, code, 'verify');
+    // Asynchronous fire-and-forget OTP email dispatch so HTTP returns immediately
+    this.mailService
+      .sendCode(email, code, 'verify')
+      .catch((err: any) =>
+        this.logger.error(
+          `Async email dispatch failed for signup (${email}): ${err?.message || err}`,
+        ),
+      );
     return { message: 'Verification code sent to your email' };
   }
 
@@ -191,7 +198,14 @@ export class AuthService {
     user.verificationCodeHash = this.hashCode(code);
     user.verificationExpiresAt = this.expiresAt();
     await this.users.getEntityManager().flush();
-    await this.mailService.sendCode(email, code, 'verify');
+    // Asynchronous fire-and-forget OTP email dispatch so HTTP returns immediately
+    this.mailService
+      .sendCode(email, code, 'verify')
+      .catch((err: any) =>
+        this.logger.error(
+          `Async email dispatch failed for resendVerification (${email}): ${err?.message || err}`,
+        ),
+      );
     return { message: 'Verification code sent to your email' };
   }
 
@@ -258,29 +272,20 @@ export class AuthService {
     user.resetCodeHash = this.hashCode(code);
     user.resetExpiresAt = this.expiresAt();
     await this.users.getEntityManager().flush();
-    try {
-      await this.mailService.sendCode(email, code, 'reset');
-    } catch (err: any) {
-      this.logger.error(
-        `Failed to send reset code email to ${email}: ${err?.message || err}`,
+
+    // Asynchronous fire-and-forget OTP email dispatch so response returns immediately
+    this.mailService
+      .sendCode(email, code, 'reset')
+      .catch((err: any) =>
+        this.logger.error(
+          `Async email dispatch failed for forgotPassword (${email}): ${err?.message || err}`,
+        ),
       );
-      if (
-        process.env.NODE_ENV !== 'production' ||
-        process.env.DEV_OTP_PREVIEW === 'true' ||
-        !this.mailService.isConfigured()
-      ) {
-        devOtp = code;
-      } else {
-        throw new BadRequestException(
-          err?.message ||
-            'Unable to send reset email at this moment. Please check email settings or try again.',
-        );
-      }
-    }
 
     if (
       process.env.NODE_ENV !== 'production' ||
-      process.env.DEV_OTP_PREVIEW === 'true'
+      process.env.DEV_OTP_PREVIEW === 'true' ||
+      !this.mailService.isConfigured()
     ) {
       devOtp = code;
     }
