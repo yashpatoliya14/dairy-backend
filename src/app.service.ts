@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.3',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.4',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 4,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 5,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.3',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.4',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,13 +45,12 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Instant, non-blocking OTP email dispatch for forgot password & verify email\n' +
-          '• 30-second countdown timer for resending OTP verification codes\n' +
-          '• Professional rounded dialog box redesign with top-right close buttons\n' +
-          '• Engaging startup splash screen with animated milk loader',
+        '• Secure OTP verification without plain text auto-fill\n' +
+          '• Resend code countdown timer\n' +
+          '• Clean modal dialog redesign with dismiss actions',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.3/app-release.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.4/app-release.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.6 MB',
       publishedAt: new Date().toISOString(),
     };
