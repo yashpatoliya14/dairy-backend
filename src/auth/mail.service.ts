@@ -148,15 +148,22 @@ export class MailService {
 
     // Try 3: Traditional SMTP (Nodemailer)
     if (this.transporter && this.from) {
-      await this.transporter.sendMail({
-        from: this.from,
-        to: email,
-        subject,
-        text,
-        html,
-      });
-      this.logger.log(`Sent ${purpose} email to ${email} via SMTP`);
-      return;
+      try {
+        await this.transporter.sendMail({
+          from: this.from,
+          to: email,
+          subject,
+          text,
+          html,
+        });
+        this.logger.log(`Sent ${purpose} email to ${email} via SMTP`);
+        return;
+      } catch (err: any) {
+        this.logger.error(
+          `SMTP sending failed to ${email}: ${err?.message || err}. Note: Render free tier blocks outbound SMTP ports 25, 465, 587. For cloud email delivery, set RESEND_API_KEY (resend.com) or BREVO_API_KEY (brevo.com) in Render environment variables.`,
+        );
+        throw err;
+      }
     }
 
     // If no provider configured or all failed

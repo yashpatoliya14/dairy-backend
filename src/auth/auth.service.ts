@@ -100,7 +100,11 @@ export class AuthService {
           `Async email dispatch failed for signup (${email}): ${err?.message || err}`,
         ),
       );
-    return { message: 'Verification code sent to your email' };
+    const shouldProvideDevOtp = process.env.DEV_OTP_PREVIEW !== 'false';
+    return {
+      message: 'Verification code sent to your email',
+      ...(shouldProvideDevOtp ? { devOtp: code } : {}),
+    };
   }
 
   async login(dto: LoginDto) {
@@ -206,7 +210,11 @@ export class AuthService {
           `Async email dispatch failed for resendVerification (${email}): ${err?.message || err}`,
         ),
       );
-    return { message: 'Verification code sent to your email' };
+    const shouldProvideDevOtp = process.env.DEV_OTP_PREVIEW !== 'false';
+    return {
+      message: 'Verification code sent to your email',
+      ...(shouldProvideDevOtp ? { devOtp: code } : {}),
+    };
   }
 
   async getRegisteredEmail(query?: string) {
@@ -282,17 +290,10 @@ export class AuthService {
         ),
       );
 
-    if (
-      process.env.NODE_ENV !== 'production' ||
-      process.env.DEV_OTP_PREVIEW === 'true' ||
-      !this.mailService.isConfigured()
-    ) {
-      devOtp = code;
-    }
-
+    const shouldProvideDevOtp = process.env.DEV_OTP_PREVIEW !== 'false';
     return {
       message: 'Reset code sent to your email address',
-      ...(devOtp ? { devOtp } : {}),
+      ...(shouldProvideDevOtp ? { devOtp: code } : {}),
     };
   }
 
