@@ -349,7 +349,9 @@ export class WhatsAppService {
 
     if (dto.useTemplate !== false) {
       const defaultTemplate = isMonthly
-        ? (this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ?? 'monthly_milk_bill_settlement')
+        ? (this.config.get<string>('WHATSAPP_MONTHLY_TEMPLATE_NAME') ??
+           this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
+           'monthly_milk_bill_settlement')
         : (this.config.get<string>('WHATSAPP_DAILY_TEMPLATE_NAME') ?? 'daily_milk_delivery_update');
       const templateName = dto.templateName ?? defaultTemplate;
       const languageCode =

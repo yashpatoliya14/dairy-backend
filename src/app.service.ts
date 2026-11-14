@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.4',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.5',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 5,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 6,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.4',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.5',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,13 +45,13 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Upgraded WhatsApp Cloud API with active Meta daily & monthly receipt templates\n' +
-          '• Automated real-time month-to-date balance calculations\n' +
-          '• Seamless background auto-update & dashboard lockout system',
+        '• Enabled Email OTP verification & Password Reset via Brevo HTTPS API\n' +
+          '• Upgraded WhatsApp Cloud API with active Meta daily & monthly receipt templates\n' +
+          '• Automated real-time calculations and OTA auto-update',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.4/DairyDesk_v1.0.4.apk',
-      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.6 MB',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.5/DairyDesk_v1.0.5.apk',
+      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.8 MB',
       publishedAt: new Date().toISOString(),
     };
   }

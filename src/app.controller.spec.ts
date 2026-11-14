@@ -19,32 +19,32 @@ describe('AppController', () => {
 
   describe('version check', () => {
     it('detects update available when client version is older than latest', () => {
-      const res = appController.getAppVersion('1.0.3', '4');
+      const res = appController.getAppVersion('1.0.4', '5');
       expect(res.isUpdateAvailable).toBe(true);
       expect(res.mustForceUpdate).toBe(true);
-      expect(res.latestVersion).toBe('1.0.4');
-      expect(res.downloadUrl).toContain('app-release.apk');
+      expect(res.latestVersion).toBe('1.0.5');
+      expect(res.downloadUrl).toContain('DairyDesk_v1.0.5.apk');
     });
 
     it('returns isUpdateAvailable false when client is on latest version', () => {
-      const res = appController.getAppVersion('1.0.4', '5');
+      const res = appController.getAppVersion('1.0.5', '6');
       expect(res.isUpdateAvailable).toBe(false);
       expect(res.mustForceUpdate).toBe(false);
     });
 
     it('allows updating version configuration dynamically', () => {
       const updated = appController.updateVersionConfig({
-        latestVersion: '1.0.5',
-        buildNumber: 6,
+        latestVersion: '1.0.6',
+        buildNumber: 7,
         forceUpdate: false,
         minSupportedVersion: '1.0.1',
       });
 
-      expect(updated.latestVersion).toBe('1.0.5');
-      expect(updated.buildNumber).toBe(6);
+      expect(updated.latestVersion).toBe('1.0.6');
+      expect(updated.buildNumber).toBe(7);
       expect(updated.forceUpdate).toBe(false);
 
-      const check = appController.getAppVersion('1.0.4', '5');
+      const check = appController.getAppVersion('1.0.5', '6');
       expect(check.isUpdateAvailable).toBe(true);
       expect(check.mustForceUpdate).toBe(false);
     });

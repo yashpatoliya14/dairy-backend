@@ -17,6 +17,14 @@ describe('MailService & Forgot Password', () => {
     expect(mailService.isConfigured()).toBe(true);
   });
 
+  it('detects Brevo API configuration', () => {
+    const config = new ConfigService({
+      BREVO_API_KEY: 'xkeysib-test_key_123',
+    });
+    const mailService = new MailService(config);
+    expect(mailService.isConfigured()).toBe(true);
+  });
+
   it('detects SMTP configuration', () => {
     const config = new ConfigService({
       SMTP_HOST: 'smtp.gmail.com',

@@ -222,19 +222,25 @@ export class AuthService {
           phoneNumber: { $in: getPhoneSearchVariants(cleanQuery) },
         });
       } else {
-        distributor = await this.distributors.findOne({
-          dairyName: { $ilike: `%${cleanQuery}%` },
-        });
-        if (distributor) {
-          user = await this.users.findOne({ uid: distributor.user.uid });
+        distributor = await this.distributors.findOne(
+          {
+            dairyName: { $ilike: `%${cleanQuery}%` },
+          },
+          { populate: ['user'] },
+        );
+        if (distributor?.user) {
+          user = distributor.user;
         }
       }
     }
 
     if (!user) {
-      distributor = await this.distributors.findOne({}, { orderBy: { did: 'ASC' } });
-      if (distributor) {
-        user = await this.users.findOne({ uid: distributor.user.uid });
+      distributor = await this.distributors.findOne(
+        {},
+        { orderBy: { did: 'ASC' }, populate: ['user'] },
+      );
+      if (distributor?.user) {
+        user = distributor.user;
       }
     }
 
