@@ -45,9 +45,9 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Secure OTP verification without plain text auto-fill\n' +
-          '• Resend code countdown timer\n' +
-          '• Clean modal dialog redesign with dismiss actions',
+        '• Upgraded WhatsApp Cloud API with active Meta daily & monthly receipt templates\n' +
+          '• Automated real-time month-to-date balance calculations\n' +
+          '• Seamless background auto-update & dashboard lockout system',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.4/app-release.apk',

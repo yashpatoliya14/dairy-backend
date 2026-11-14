@@ -169,19 +169,14 @@ export class WhatsAppService {
     liters: number;
     price: number;
   }) {
-    return this.sendTemplateMessage({
-      to: this.normalizePhoneNumber(input.phoneNumber),
-      templateName:
-        this.config.get<string>('WHATSAPP_MILK_ENTRY_TEMPLATE_NAME') ??
-        'milk_delivery_update',
-      languageCode:
-        this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ?? 'en_US',
-      bodyParameters: [
-        input.customerName,
-        `${input.liters}L`,
-        input.price.toFixed(2),
-        (input.liters * input.price).toFixed(2),
-      ],
+    return this.sendBillMessage({
+      to: input.phoneNumber,
+      customerName: input.customerName,
+      type: 'daily',
+      liters: input.liters,
+      ratePerLiter: input.price,
+      totalAmount: input.liters * input.price,
+      useTemplate: true,
     });
   }
 
@@ -364,6 +359,9 @@ export class WhatsAppService {
 
       let bodyParameters: string[];
       if (templateName === 'daily_milk_delivery_update' || (!isMonthly && templateName.includes('daily'))) {
+        const contactInfo = distributorPhone
+          ? `${distributorName} (${distributorPhone})`
+          : distributorName;
         bodyParameters = [
           dto.customerName,
           `${dateOrMonth}${sessionSuffix}`,
@@ -373,8 +371,7 @@ export class WhatsAppService {
           monthToDateBill.toFixed(2),
           previousDue.toFixed(2),
           totalPayable.toFixed(2),
-          distributorName,
-          distributorPhone,
+          contactInfo,
         ];
       } else if (templateName === 'monthly_milk_bill_settlement' || isMonthly) {
         bodyParameters = [

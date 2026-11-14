@@ -70,7 +70,7 @@ describe('WhatsAppService.sendBillMessage', () => {
     vi.restoreAllMocks();
   });
 
-  it('sends daily bills using the 10-parameter daily_milk_delivery_update template', async () => {
+  it('sends daily bills using the 9-parameter daily_milk_delivery_update template', async () => {
     const result = await service.sendBillMessage({
       to: '919876543210',
       customerName: 'Test Customer',
@@ -102,8 +102,7 @@ describe('WhatsAppService.sendBillMessage', () => {
               { type: 'text', text: '120.00' },
               { type: 'text', text: '0.00' },
               { type: 'text', text: '120.00' },
-              { type: 'text', text: 'Dairy Owner' },
-              { type: 'text', text: '+91 9104152524' },
+              { type: 'text', text: 'Dairy Owner (+91 9104152524)' },
             ],
           },
         ],
