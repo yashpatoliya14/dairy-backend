@@ -50,7 +50,7 @@ export class AppService {
           '• Seamless background auto-update & dashboard lockout system',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.4/app-release.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.4/DairyDesk_v1.0.4.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.6 MB',
       publishedAt: new Date().toISOString(),
     };
