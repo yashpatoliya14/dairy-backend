@@ -32,7 +32,7 @@ export class AppService {
       latestVersion:
         this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.5',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 6,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 7,
       ),
       minSupportedVersion:
         this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.5',
