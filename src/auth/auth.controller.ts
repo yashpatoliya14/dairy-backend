@@ -45,6 +45,11 @@ export class AuthController {
     return this.authService.getRegisteredEmail(query);
   }
 
+  @Get('mail-diagnostics')
+  getMailDiagnostics() {
+    return this.authService.getMailDiagnostics();
+  }
+
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);

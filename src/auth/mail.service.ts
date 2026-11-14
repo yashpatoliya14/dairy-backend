@@ -58,6 +58,27 @@ export class MailService {
     );
   }
 
+  getDiagnostics(): Record<string, unknown> {
+    return {
+      brevoConfigured: Boolean(this.brevoApiKey),
+      brevoKeyPrefix: this.brevoApiKey
+        ? `${this.brevoApiKey.slice(0, 10)}...`
+        : null,
+      brevoKeyType: this.brevoApiKey
+        ? this.brevoApiKey.startsWith('xkeysib-')
+          ? 'VALID_REST_API_KEY'
+          : this.brevoApiKey.startsWith('xsmtpsib-')
+          ? 'INVALID_SMTP_KEY_NEEDS_XKEYSIB'
+          : 'UNKNOWN'
+        : 'NOT_SET',
+      brevoFrom:
+        this.brevoFrom ||
+        'NOT_SET (defaults to unverified noreply@dairydesk.in)',
+      resendConfigured: Boolean(this.resendApiKey),
+      smtpConfigured: Boolean(this.transporter && this.from),
+    };
+  }
+
   async sendCode(
     email: string,
     code: string,

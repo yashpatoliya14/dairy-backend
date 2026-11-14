@@ -89,7 +89,7 @@ describe('WhatsAppService.sendBillMessage', () => {
       type: 'template',
       template: {
         name: 'daily_milk_delivery_update',
-        language: { code: 'en_US' },
+        language: { code: 'en' },
         components: [
           {
             type: 'body',

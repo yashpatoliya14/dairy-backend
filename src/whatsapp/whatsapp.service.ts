@@ -214,7 +214,12 @@ export class WhatsAppService {
       type: 'template',
       template: {
         name: dto.templateName,
-        language: { code: dto.languageCode ?? 'en_US' },
+        language: {
+          code:
+            dto.languageCode ??
+            this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ??
+            'en',
+        },
         ...(components ? { components } : {}),
       },
     });
@@ -354,10 +359,20 @@ export class WhatsAppService {
            'monthly_milk_bill_settlement')
         : (this.config.get<string>('WHATSAPP_DAILY_TEMPLATE_NAME') ?? 'daily_milk_delivery_update');
       const templateName = dto.templateName ?? defaultTemplate;
-      const languageCode =
+      let languageCode =
         dto.languageCode ??
         this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ??
         'en';
+
+      // Meta templates 'daily_milk_delivery_update', 'monthly_milk_bill_settlement', and 'dairy_milk_bill_update' are approved under language 'en'
+      if (
+        (templateName === 'daily_milk_delivery_update' ||
+          templateName === 'monthly_milk_bill_settlement' ||
+          templateName === 'dairy_milk_bill_update') &&
+        (languageCode === 'en_US' || !languageCode)
+      ) {
+        languageCode = 'en';
+      }
 
       let bodyParameters: string[];
       if (templateName === 'daily_milk_delivery_update' || (!isMonthly && templateName.includes('daily'))) {

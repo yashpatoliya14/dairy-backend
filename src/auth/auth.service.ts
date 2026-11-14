@@ -42,6 +42,10 @@ export class AuthService {
     private readonly mailService: MailService,
   ) { }
 
+  getMailDiagnostics(): Record<string, unknown> {
+    return this.mailService.getDiagnostics();
+  }
+
   async signup(dto: SignupDto) {
     const rawEmail = dto.email?.trim() ?? '';
     const email = rawEmail.toLowerCase();
