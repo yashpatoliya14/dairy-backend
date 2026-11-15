@@ -1,9 +1,16 @@
-﻿import { NestFactory } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { ValidationPipe } from '@nestjs/common';
 import { RequestLoggingMiddleware } from './common/request-logging.middleware.js';
+import { runMigration } from './migrations/run-migration.js';
 
 async function bootstrap() {
+  try {
+    await runMigration();
+  } catch (err) {
+    console.error('[Migration] Auto-migration warning:', err);
+  }
+
   const app = await NestFactory.create(AppModule);
   const requestLogger = new RequestLoggingMiddleware();
   app.use(requestLogger.use.bind(requestLogger));

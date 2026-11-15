@@ -243,10 +243,14 @@ export class CustomersService {
     const customer = await this.customerFor(userId, customerId);
     const em = this.customers.getEntityManager();
 
-    // 1. Delete associated payment entries
-    const customerPayments = await this.payments.find({ customer });
-    for (const p of customerPayments) {
-      em.remove(p);
+    // 1. Delete associated payment entries safely if table exists
+    try {
+      const customerPayments = await this.payments.find({ customer });
+      for (const p of customerPayments) {
+        em.remove(p);
+      }
+    } catch (_) {
+      // Payment table might be empty or uninitialized
     }
 
     // 2. Delete associated milk entries
@@ -321,22 +325,30 @@ export class CustomersService {
     month: number,
   ) {
     const customer = await this.customerFor(userId, customerId);
-    const payment = await this.payments.findOne({
-      customer,
-      year,
-      month,
-    });
-    if (!payment) return null;
-    return this.serializePayment(payment);
+    try {
+      const payment = await this.payments.findOne({
+        customer,
+        year,
+        month,
+      });
+      if (!payment) return null;
+      return this.serializePayment(payment);
+    } catch (_) {
+      return null;
+    }
   }
 
   async listPayments(userId: string, customerId: string) {
     const customer = await this.customerFor(userId, customerId);
-    const payments = await this.payments.find(
-      { customer },
-      { orderBy: { year: 'DESC', month: 'DESC' } },
-    );
-    return payments.map((p) => this.serializePayment(p));
+    try {
+      const payments = await this.payments.find(
+        { customer },
+        { orderBy: { year: 'DESC', month: 'DESC' } },
+      );
+      return payments.map((p) => this.serializePayment(p));
+    } catch (_) {
+      return [];
+    }
   }
 
   async deletePayment(
@@ -505,10 +517,12 @@ export class CustomersService {
         distributor,
         entryDate: { $gte: startDate, $lte: endDate },
       }),
-      this.payments.find({
-        distributor,
-        $or: paymentOrConditions,
-      }),
+      this.payments
+        .find({
+          distributor,
+          $or: paymentOrConditions,
+        })
+        .catch(() => []),
     ]);
 
     const monthNames = [
