@@ -5,6 +5,7 @@ import { Customer } from '../entities/customer.entity.js';
 import { Distributor } from '../entities/distributor.entity.js';
 import { User } from '../entities/user.entity.js';
 import { MilkEntry } from '../entities/milk-entry.entity.js';
+import { PaymentEntry } from '../entities/payment-entry.entity.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module.js';
 import { CustomersController } from './customers.controller.js';
@@ -13,7 +14,7 @@ import { CustomersService } from './customers.service.js';
 @Module({
   imports: [
     AuthModule,
-    MikroOrmModule.forFeature([Customer, Distributor, User, MilkEntry]),
+    MikroOrmModule.forFeature([Customer, Distributor, User, MilkEntry, PaymentEntry]),
     SettingsModule,
     WhatsAppModule,
   ],

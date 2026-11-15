@@ -5,9 +5,11 @@ import { Customer, NotificationChannel } from '../entities/customer.entity.js';
 import { Distributor } from '../entities/distributor.entity.js';
 import { User } from '../entities/user.entity.js';
 import { MilkEntry } from '../entities/milk-entry.entity.js';
+import { PaymentEntry } from '../entities/payment-entry.entity.js';
 import { CreateCustomerDto } from './dto/create-customer.dto.js';
 import { UpdateCustomerDto } from './dto/update-customer.dto.js';
 import { CreateMilkEntryDto } from './dto/create-milk-entry.dto.js';
+import { CreatePaymentEntryDto } from './dto/create-payment-entry.dto.js';
 import { randomUUID } from 'node:crypto';
 import { SettingsService } from '../settings/settings.service.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
@@ -24,6 +26,8 @@ export class CustomersService {
     private readonly users: EntityRepository<User>,
     @InjectRepository(MilkEntry)
     private readonly entries: EntityRepository<MilkEntry>,
+    @InjectRepository(PaymentEntry)
+    private readonly payments: EntityRepository<PaymentEntry>,
     private readonly settingsService: SettingsService,
     private readonly whatsappService: WhatsAppService,
   ) {}
@@ -224,7 +228,142 @@ export class CustomersService {
       where,
       { orderBy: { uniqueNumber: 'ASC' } },
     );
+    customers.sort((a, b) => {
+      const numA = Number.parseInt(a.uniqueNumber, 10);
+      const numB = Number.parseInt(b.uniqueNumber, 10);
+      if (Number.isInteger(numA) && Number.isInteger(numB)) {
+        return numA - numB;
+      }
+      return a.uniqueNumber.localeCompare(b.uniqueNumber);
+    });
     return customers.map((customer) => this.serialize(customer));
+  }
+
+  async delete(userId: string, customerId: string) {
+    const customer = await this.customerFor(userId, customerId);
+    const em = this.customers.getEntityManager();
+
+    // 1. Delete associated payment entries
+    const customerPayments = await this.payments.find({ customer });
+    for (const p of customerPayments) {
+      em.remove(p);
+    }
+
+    // 2. Delete associated milk entries
+    const customerEntries = await this.entries.find({ customer });
+    for (const e of customerEntries) {
+      em.remove(e);
+    }
+
+    // 3. Delete customer; customer numbers of other customers remain untouched (e.g. 1, 2, 3, 5)
+    em.remove(customer);
+    await em.flush();
+
+    return {
+      success: true,
+      message: 'Customer deleted successfully',
+      deletedCustomerNumber: customer.uniqueNumber,
+    };
+  }
+
+  async savePayment(
+    userId: string,
+    customerId: string,
+    dto: CreatePaymentEntryDto,
+  ) {
+    const customer = await this.customerFor(userId, customerId);
+    const distributor = await this.distributorFor(userId);
+    const user = await this.userFor(userId);
+    const receivedDate = dto.receivedDate
+      ? new Date(dto.receivedDate)
+      : new Date();
+
+    let payment = await this.payments.findOne({
+      customer,
+      year: dto.year,
+      month: dto.month,
+    });
+
+    if (payment) {
+      payment.billAmount = dto.billAmount;
+      payment.receivedAmount = dto.receivedAmount;
+      if (dto.note !== undefined) payment.note = dto.note;
+      payment.receivedDate = receivedDate;
+      payment.updatedAt = new Date();
+      await this.payments.getEntityManager().flush();
+      return this.serializePayment(payment);
+    }
+
+    payment = this.payments.create({
+      pid: randomUUID(),
+      customer,
+      distributor,
+      user,
+      year: dto.year,
+      month: dto.month,
+      billAmount: dto.billAmount,
+      receivedAmount: dto.receivedAmount,
+      note: dto.note ?? '',
+      receivedDate,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    this.payments.getEntityManager().persist(payment);
+    await this.payments.getEntityManager().flush();
+    return this.serializePayment(payment);
+  }
+
+  async getPayment(
+    userId: string,
+    customerId: string,
+    year: number,
+    month: number,
+  ) {
+    const customer = await this.customerFor(userId, customerId);
+    const payment = await this.payments.findOne({
+      customer,
+      year,
+      month,
+    });
+    if (!payment) return null;
+    return this.serializePayment(payment);
+  }
+
+  async listPayments(userId: string, customerId: string) {
+    const customer = await this.customerFor(userId, customerId);
+    const payments = await this.payments.find(
+      { customer },
+      { orderBy: { year: 'DESC', month: 'DESC' } },
+    );
+    return payments.map((p) => this.serializePayment(p));
+  }
+
+  async deletePayment(
+    userId: string,
+    customerId: string,
+    options: { year?: number; month?: number; paymentId?: string },
+  ) {
+    const customer = await this.customerFor(userId, customerId);
+    const where: Record<string, any> = { customer };
+    if (options.paymentId) {
+      where.pid = options.paymentId;
+    } else if (options.year && options.month) {
+      where.year = options.year;
+      where.month = options.month;
+    } else {
+      throw new NotFoundException('Payment identifier required');
+    }
+
+    const payment = await this.payments.findOne(where);
+    if (!payment) {
+      throw new NotFoundException('Payment entry not found');
+    }
+
+    const em = this.payments.getEntityManager();
+    em.remove(payment);
+    await em.flush();
+    return { success: true, message: 'Payment entry deleted successfully' };
   }
 
   private async distributorFor(userId: string) {
@@ -300,5 +439,32 @@ export class CustomersService {
     }
 
     throw new Error('Milk entry has an invalid entry date');
+  }
+
+  private serializePayment(payment: PaymentEntry) {
+    return {
+      id: payment.pid,
+      customerId: (payment.customer as any)?.cid ?? payment.customer,
+      year: payment.year,
+      month: payment.month,
+      billAmount: Number(payment.billAmount),
+      receivedAmount: Number(payment.receivedAmount),
+      note: payment.note ?? '',
+      receivedDate: payment.receivedDate
+        ? (payment.receivedDate instanceof Date
+            ? payment.receivedDate.toISOString()
+            : String(payment.receivedDate))
+        : null,
+      createdAt: payment.createdAt
+        ? (payment.createdAt instanceof Date
+            ? payment.createdAt.toISOString()
+            : String(payment.createdAt))
+        : null,
+      updatedAt: payment.updatedAt
+        ? (payment.updatedAt instanceof Date
+            ? payment.updatedAt.toISOString()
+            : String(payment.updatedAt))
+        : null,
+    };
   }
 }

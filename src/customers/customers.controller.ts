@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { CreateCustomerDto } from './dto/create-customer.dto.js';
 import { CreateMilkEntryDto } from './dto/create-milk-entry.dto.js';
+import { CreatePaymentEntryDto } from './dto/create-payment-entry.dto.js';
 import { UpdateCustomerDto } from './dto/update-customer.dto.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
 import { CustomersService } from './customers.service.js';
@@ -105,6 +106,75 @@ export class CustomersController {
       customerId,
       dto,
     );
+  }
+
+  @Delete(':customerId')
+  delete(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId') customerId: string,
+  ) {
+    return this.customersService.delete(request.user.sub, customerId);
+  }
+
+  @Post(':customerId/payments')
+  savePayment(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId') customerId: string,
+    @Body() dto: CreatePaymentEntryDto,
+  ) {
+    return this.customersService.savePayment(
+      request.user.sub,
+      customerId,
+      dto,
+    );
+  }
+
+  @Get(':customerId/payments')
+  getPayments(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId') customerId: string,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    if (year && month) {
+      const y = parseInt(year, 10);
+      const m = parseInt(month, 10);
+      if (!isNaN(y) && !isNaN(m)) {
+        return this.customersService.getPayment(
+          request.user.sub,
+          customerId,
+          y,
+          m,
+        );
+      }
+    }
+    return this.customersService.listPayments(request.user.sub, customerId);
+  }
+
+  @Delete(':customerId/payments/:paymentId')
+  deletePaymentById(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId') customerId: string,
+    @Param('paymentId') paymentId: string,
+  ) {
+    return this.customersService.deletePayment(request.user.sub, customerId, {
+      paymentId,
+    });
+  }
+
+  @Delete(':customerId/payments')
+  deletePaymentByMonth(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId') customerId: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    const y = parseInt(year, 10);
+    const m = parseInt(month, 10);
+    return this.customersService.deletePayment(request.user.sub, customerId, {
+      year: y,
+      month: m,
+    });
   }
 
   @Get()

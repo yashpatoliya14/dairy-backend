@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.6',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.7',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 8,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 9,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.6',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.7',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,12 +45,14 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Fixed bill calculations: bills are strictly summed from daily entries with zero average-rate rounding error\n' +
-          '• Exact entry-based monthly billing in statements, customer ledger, and WhatsApp receipts\n' +
-          '• Enhanced precision-safe financial calculations across all dairy ledgers',
+        '• Fixed payment dues: payments immediately reduce current month balance due\n' +
+          '• Modern high-contrast Bills section with live payment progress bar\n' +
+          '• Dedicated Bill & Entries direct action on customer items\n' +
+          '• WhatsApp monthly bill calculation strictly based on entries with ₹0.00 fallback\n' +
+          '• Persistent customer numbering and full payment & customer CRUD',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.6/DairyDesk_v1.0.6.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.7/DairyDesk_v1.0.7.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.8 MB',
       publishedAt: new Date().toISOString(),
     };

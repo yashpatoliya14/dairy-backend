@@ -10,6 +10,7 @@ import { Settings } from './entities/settings.entity.js';
 import { User } from './entities/user.entity.js';
 import { MilkEntry } from './entities/milk-entry.entity.js';
 import { DailyMessageLog } from './entities/daily-message-log.entity.js';
+import { PaymentEntry } from './entities/payment-entry.entity.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { DistributorsModule } from './distributors/distributors.module.js';
 import { SettingsModule } from './settings/settings.module.js';
@@ -28,7 +29,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
       useFactory: (configService: ConfigService) => ({
         clientUrl: configService.getOrThrow<string>('DATABASE_URL'),
         schema: 'public',
-        entities: [User, Distributor, Customer, Settings, MilkEntry, DailyMessageLog],
+        entities: [User, Distributor, Customer, Settings, MilkEntry, DailyMessageLog, PaymentEntry],
         driverOptions: {
           ssl: { rejectUnauthorized: false },
         },

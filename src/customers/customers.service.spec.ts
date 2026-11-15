@@ -8,6 +8,7 @@ describe('CustomersService - Milk Entries & Card', () => {
   let mockDistributorsRepo: any;
   let mockUsersRepo: any;
   let mockEntriesRepo: any;
+  let mockPaymentsRepo: any;
   let mockEntityManager: any;
   let mockSettingsService: any;
   let mockWhatsAppService: any;
@@ -41,6 +42,13 @@ describe('CustomersService - Milk Entries & Card', () => {
       getEntityManager: () => mockEntityManager,
     };
 
+    mockPaymentsRepo = {
+      findOne: vi.fn(),
+      find: vi.fn().mockResolvedValue([]),
+      create: vi.fn((data) => data),
+      getEntityManager: () => mockEntityManager,
+    };
+
     mockSettingsService = {
       valuesFor: vi.fn(),
     };
@@ -54,6 +62,7 @@ describe('CustomersService - Milk Entries & Card', () => {
       mockDistributorsRepo,
       mockUsersRepo,
       mockEntriesRepo,
+      mockPaymentsRepo,
       mockSettingsService,
       mockWhatsAppService,
     );
@@ -203,5 +212,53 @@ describe('CustomersService - Milk Entries & Card', () => {
         total: 78.13,
       }),
     );
+  });
+
+  it('deletes customer along with payments and entries without altering other numbers', async () => {
+    const fakeUser = { uid: 'u1' };
+    const fakeDistributor = { did: 'd1', user: fakeUser };
+    const fakeCustomer = {
+      cid: 'c4',
+      uniqueNumber: '4',
+      distributor: fakeDistributor,
+    };
+    mockUsersRepo.findOne.mockResolvedValue(fakeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
+    mockCustomersRepo.findOne.mockResolvedValue(fakeCustomer);
+    mockPaymentsRepo.find.mockResolvedValue([{ pid: 'p1' }]);
+    mockEntriesRepo.find.mockResolvedValue([{ eid: 'e1' }]);
+
+    const res = await service.delete('u1', 'c4');
+    expect(res.success).toBe(true);
+    expect(res.deletedCustomerNumber).toBe('4');
+    expect(mockEntityManager.remove).toHaveBeenCalledWith(fakeCustomer);
+  });
+
+  it('performs payment entry CRUD properly', async () => {
+    const fakeUser = { uid: 'u1' };
+    const fakeDistributor = { did: 'd1', user: fakeUser };
+    const fakeCustomer = { cid: 'c1', distributor: fakeDistributor };
+    mockUsersRepo.findOne.mockResolvedValue(fakeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
+    mockCustomersRepo.findOne.mockResolvedValue(fakeCustomer);
+
+    // Save payment
+    mockPaymentsRepo.findOne.mockResolvedValue(null);
+    mockPaymentsRepo.create.mockImplementation((data: any) => ({
+      ...data,
+      pid: 'p-new',
+    }));
+
+    const saved = await service.savePayment('u1', 'c1', {
+      year: 2026,
+      month: 11,
+      billAmount: 10000,
+      receivedAmount: 5000,
+      note: '50% advance',
+    });
+
+    expect(saved.billAmount).toBe(10000);
+    expect(saved.receivedAmount).toBe(5000);
+    expect(saved.note).toBe('50% advance');
   });
 });
