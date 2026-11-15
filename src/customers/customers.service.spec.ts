@@ -260,6 +260,20 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(saved.billAmount).toBe(10000);
     expect(saved.receivedAmount).toBe(5000);
     expect(saved.note).toBe('50% advance');
+
+    // Update existing payment
+    mockPaymentsRepo.findOne.mockResolvedValue(saved);
+    const updated = await service.savePayment('u1', 'c1', {
+      year: 2026,
+      month: 11,
+      billAmount: 10000,
+      receivedAmount: 10000,
+      note: 'fully paid now',
+    });
+
+    expect(updated.billAmount).toBe(10000);
+    expect(updated.receivedAmount).toBe(10000);
+    expect(updated.note).toBe('fully paid now');
   });
 
   it('computes monthly bills summary in a single pass', async () => {

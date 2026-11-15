@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.17',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.18',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 19,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 20,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.17',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.18',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,10 +45,9 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Messages section: "Entries Done" cleanly filters out already-sent messages\n' +
-          '• Real-time counts on filter tabs (Entries Done, Sent, Pending, All)\n' +
-          '• Modern redesigned "Select All Eligible" banner with interactive gradient\n' +
-          '• Instant status feedback and accurate bulk selection',
+        '• Fully paid bill amount displays actual amount paid instead of 0.0\n' +
+          '• Resolved edit payment record error: edit and update payments reliably\n' +
+          '• Resilient customer identification and precise accounting synchronization',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',

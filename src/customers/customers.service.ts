@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { SettingsService } from '../settings/settings.service.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
+import { roundToCurrency } from './billing.utils.js';
 
 @Injectable()
 export class CustomersService {
@@ -279,9 +280,12 @@ export class CustomersService {
     const customer = await this.customerFor(userId, customerId);
     const distributor = await this.distributorFor(userId);
     const user = await this.userFor(userId);
-    const receivedDate = dto.receivedDate
-      ? new Date(dto.receivedDate)
-      : new Date();
+    const receivedDate =
+      dto.receivedDate && !isNaN(new Date(dto.receivedDate).getTime())
+        ? new Date(dto.receivedDate)
+        : new Date();
+    const billAmount = roundToCurrency(Number(dto.billAmount) || 0);
+    const receivedAmount = roundToCurrency(Number(dto.receivedAmount) || 0);
 
     let payment = await this.payments.findOne(
       {
@@ -293,8 +297,8 @@ export class CustomersService {
     );
 
     if (payment) {
-      payment.billAmount = dto.billAmount;
-      payment.receivedAmount = dto.receivedAmount;
+      payment.billAmount = billAmount;
+      payment.receivedAmount = receivedAmount;
       if (dto.note !== undefined) payment.note = dto.note;
       payment.receivedDate = receivedDate;
       payment.updatedAt = new Date();
@@ -309,8 +313,8 @@ export class CustomersService {
       user,
       year: dto.year,
       month: dto.month,
-      billAmount: dto.billAmount,
-      receivedAmount: dto.receivedAmount,
+      billAmount,
+      receivedAmount,
       note: dto.note ?? '',
       receivedDate,
       createdAt: new Date(),
@@ -416,10 +420,17 @@ export class CustomersService {
   }
 
   private async customerFor(userId: string, customerId: string) {
-    const customer = await this.customers.findOne({
-      cid: customerId,
-      distributor: await this.distributorFor(userId),
-    });
+    const distributor = await this.distributorFor(userId);
+    const trimmedId = customerId ? String(customerId).trim() : '';
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        trimmedId,
+      );
+    const customer = await this.customers.findOne(
+      isUuid
+        ? { cid: trimmedId, distributor }
+        : { uniqueNumber: trimmedId, distributor },
+    );
     if (!customer) throw new NotFoundException('Customer not found');
     return customer;
   }
