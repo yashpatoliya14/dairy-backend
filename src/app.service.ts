@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.14',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.15',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 16,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 17,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.14',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.15',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,10 +45,10 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Real-time Net Due calculation & full payment sync across all screens\n' +
-          '• Customer Monthly Bill: instant 0.00 reflection upon full payment\n' +
-          '• WhatsApp bill export: real-time deduction of payments received\n' +
-          '• Fixed payment modal remaining due pre-fill & multi-month ledger sync',
+        '• Payment Entry: Net Total Due cleanly deducted by previous payments\n' +
+          '• Unified neat & clean Bill Summary card with clear breakdown\n' +
+          '• Add Payment mode for recording installments without overwriting previous payments\n' +
+          '• Real-time Net Due calculation & full payment sync across all screens',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',
