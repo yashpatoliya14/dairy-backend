@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.11',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.12',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 13,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 14,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.11',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.12',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,8 +45,8 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Smooth app launch: Splash screen loader transitions only after dashboard data is fully fetched\n' +
-          '• Instant dashboard display with zero layout flicker or empty loading states\n' +
+        '• High-speed dedicated VPS backend (instant load, 0 cold starts)\n' +
+          '• Smooth app launch: Splash screen loader transitions only after dashboard data is fully fetched\n' +
           '• Real-time payment state updates and full payment CRUD support',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
