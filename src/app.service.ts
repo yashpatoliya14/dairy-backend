@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.5',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.6',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 7,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 8,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.5',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.6',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,12 +45,12 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Enabled Email OTP verification & Password Reset via Brevo HTTPS API\n' +
-          '• Upgraded WhatsApp Cloud API with active Meta daily & monthly receipt templates\n' +
-          '• Automated real-time calculations and OTA auto-update',
+        '• Fixed bill calculations: bills are strictly summed from daily entries with zero average-rate rounding error\n' +
+          '• Exact entry-based monthly billing in statements, customer ledger, and WhatsApp receipts\n' +
+          '• Enhanced precision-safe financial calculations across all dairy ledgers',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.5/DairyDesk_v1.0.5.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.6/DairyDesk_v1.0.6.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.8 MB',
       publishedAt: new Date().toISOString(),
     };

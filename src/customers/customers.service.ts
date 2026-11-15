@@ -72,11 +72,13 @@ export class CustomersService {
     const customer = await this.customerFor(userId, customerId);
     const distributor = await this.distributorFor(userId);
     const entryDate = new Date(`${dto.entryDate}T00:00:00.000Z`);
-    const total = Math.round((dto.liters * dto.price + Number.EPSILON) * 100) / 100;
+    const liters = Math.round((Number(dto.liters) + Number.EPSILON) * 100) / 100;
+    const price = Math.round((Number(dto.price) + Number.EPSILON) * 100) / 100;
+    const total = Math.round((liters * price + Number.EPSILON) * 100) / 100;
     const existing = await this.entries.findOne({ customer, entryDate });
     if (existing) {
-      existing.liters = dto.liters;
-      existing.price = dto.price;
+      existing.liters = liters;
+      existing.price = price;
       existing.total = total;
       await this.entries.getEntityManager().flush();
       return this.serializeEntry(existing);
@@ -87,8 +89,8 @@ export class CustomersService {
       distributor,
       user: await this.userFor(userId),
       entryDate,
-      liters: dto.liters,
-      price: dto.price,
+      liters,
+      price,
       total,
     });
     this.entries.getEntityManager().persist(entry);
@@ -163,11 +165,18 @@ export class CustomersService {
       { orderBy: { entryDate: 'ASC' } },
     );
     const totalLiters = entries.reduce(
-      (sum, e) => sum + Number(e.liters),
+      (sum, e) => sum + Number(e.liters || 0),
       0,
     );
     const totalAmount = entries.reduce(
-      (sum, e) => sum + Number(e.total),
+      (sum, e) =>
+        sum +
+        (e.total != null
+          ? Number(e.total)
+          : Math.round(
+              (Number(e.liters || 0) * Number(e.price || 0) + Number.EPSILON) *
+                100,
+            ) / 100),
       0,
     );
     return {
@@ -175,8 +184,8 @@ export class CustomersService {
       month,
       daysInMonth: endDate.getUTCDate(),
       entriesCount: entries.length,
-      totalLiters: Math.round(totalLiters * 100) / 100,
-      totalAmount: Math.round(totalAmount * 100) / 100,
+      totalLiters: Math.round((totalLiters + Number.EPSILON) * 100) / 100,
+      totalAmount: Math.round((totalAmount + Number.EPSILON) * 100) / 100,
       entries: entries.map((entry) => this.serializeEntry(entry)),
     };
   }

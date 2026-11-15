@@ -758,9 +758,11 @@ export class WhatsAppService {
         : Number(customer.liters ?? 0);
       const price = entry ? Number(entry.price) : Number(customer.price ?? 0);
       const total = entry
-        ? Number(entry.total)
+        ? (entry.total != null
+            ? Number(entry.total)
+            : Math.round((liters * price + Number.EPSILON) * 100) / 100)
         : hasEntry
-        ? liters * price
+        ? Math.round((liters * price + Number.EPSILON) * 100) / 100
         : 0;
 
       if (hasEntry) {
