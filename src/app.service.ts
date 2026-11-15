@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.12',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.13',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 14,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 15,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.12',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.13',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,8 +45,8 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• High-speed dedicated VPS backend (instant load, 0 cold starts)\n' +
-          '• Smooth app launch: Splash screen loader transitions only after dashboard data is fully fetched\n' +
+        '• Customer cards: fully responsive 2-tier layout with generous space and bold metrics\n' +
+          '• High-speed dedicated VPS backend (instant load, 0 cold starts)\n' +
           '• Real-time payment state updates and full payment CRUD support',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
