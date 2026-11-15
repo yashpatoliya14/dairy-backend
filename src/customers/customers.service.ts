@@ -282,11 +282,14 @@ export class CustomersService {
       ? new Date(dto.receivedDate)
       : new Date();
 
-    let payment = await this.payments.findOne({
-      customer,
-      year: dto.year,
-      month: dto.month,
-    });
+    let payment = await this.payments.findOne(
+      {
+        customer,
+        year: dto.year,
+        month: dto.month,
+      },
+      { populate: ['customer'] },
+    );
 
     if (payment) {
       payment.billAmount = dto.billAmount;
@@ -326,11 +329,14 @@ export class CustomersService {
   ) {
     const customer = await this.customerFor(userId, customerId);
     try {
-      const payment = await this.payments.findOne({
-        customer,
-        year,
-        month,
-      });
+      const payment = await this.payments.findOne(
+        {
+          customer,
+          year,
+          month,
+        },
+        { populate: ['customer'] },
+      );
       if (!payment) return null;
       return this.serializePayment(payment);
     } catch (_) {
@@ -343,7 +349,7 @@ export class CustomersService {
     try {
       const payments = await this.payments.find(
         { customer },
-        { orderBy: { year: 'DESC', month: 'DESC' } },
+        { orderBy: { year: 'DESC', month: 'DESC' }, populate: ['customer'] },
       );
       return payments.map((p) => this.serializePayment(p));
     } catch (_) {
@@ -513,15 +519,21 @@ export class CustomersService {
     }));
 
     const [allEntries, allPayments] = await Promise.all([
-      this.entries.find({
-        distributor,
-        entryDate: { $gte: startDate, $lte: endDate },
-      }),
-      this.payments
-        .find({
+      this.entries.find(
+        {
           distributor,
-          $or: paymentOrConditions,
-        })
+          entryDate: { $gte: startDate, $lte: endDate },
+        },
+        { populate: ['customer'] },
+      ),
+      this.payments
+        .find(
+          {
+            distributor,
+            $or: paymentOrConditions,
+          },
+          { populate: ['customer'] },
+        )
         .catch(() => []),
     ]);
 
@@ -532,7 +544,7 @@ export class CustomersService {
 
     const entriesMap = new Map<string, Map<string, MilkEntry[]>>();
     for (const e of allEntries) {
-      const cid = (e.customer as any)?.cid ?? (e.customer as any);
+      const cid = this.extractCustomerId(e.customer);
       const eDate = e.entryDate instanceof Date ? e.entryDate : new Date(e.entryDate);
       const key = `${eDate.getUTCFullYear()}-${String(eDate.getUTCMonth() + 1).padStart(2, '0')}`;
       if (!entriesMap.has(cid)) entriesMap.set(cid, new Map());
@@ -543,7 +555,7 @@ export class CustomersService {
 
     const paymentsMap = new Map<string, Map<string, PaymentEntry>>();
     for (const p of allPayments) {
-      const cid = (p.customer as any)?.cid ?? (p.customer as any);
+      const cid = this.extractCustomerId(p.customer);
       const key = `${p.year}-${String(p.month).padStart(2, '0')}`;
       if (!paymentsMap.has(cid)) paymentsMap.set(cid, new Map());
       paymentsMap.get(cid)!.set(key, p);
@@ -680,10 +692,23 @@ export class CustomersService {
     return items;
   }
 
+  private extractCustomerId(customer: any): string {
+    if (!customer) return '';
+    if (typeof customer === 'string') return customer;
+    if (customer.cid) return String(customer.cid);
+    if (customer.id) return String(customer.id);
+    if (typeof customer.unwrap === 'function') {
+      const unwrapped = customer.unwrap();
+      if (unwrapped?.cid) return String(unwrapped.cid);
+      if (unwrapped?.id) return String(unwrapped.id);
+    }
+    return String(customer);
+  }
+
   private serializePayment(payment: PaymentEntry) {
     return {
       id: payment.pid,
-      customerId: (payment.customer as any)?.cid ?? payment.customer,
+      customerId: this.extractCustomerId(payment.customer),
       year: payment.year,
       month: payment.month,
       billAmount: Number(payment.billAmount),
