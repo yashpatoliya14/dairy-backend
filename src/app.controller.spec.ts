@@ -23,7 +23,7 @@ describe('AppController', () => {
       expect(res.isUpdateAvailable).toBe(true);
       expect(res.mustForceUpdate).toBe(true);
       expect(res.latestVersion).toBe('1.0.7');
-      expect(res.downloadUrl).toContain('DairyDesk_v1.0.7.apk');
+      expect(res.downloadUrl).toContain('app-release.apk');
     });
 
     it('returns isUpdateAvailable false when client is on latest version', () => {

@@ -52,7 +52,7 @@ export class AppService {
           '• Persistent customer numbering and full payment & customer CRUD',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.7/DairyDesk_v1.0.7.apk',
+        'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.8 MB',
       publishedAt: new Date().toISOString(),
     };
