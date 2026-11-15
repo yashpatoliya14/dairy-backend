@@ -457,7 +457,7 @@ export class CustomersService {
     const user = await this.userFor(userId);
     const distributor = await this.distributorFor(userId);
     const [settings, customerList, todaySummary] = await Promise.all([
-      this.settingsService.getSettings(userId),
+      this.settingsService.get(userId),
       this.list(userId),
       this.whatsappService.getDailySummary(userId, dateStr),
     ]);
@@ -469,7 +469,7 @@ export class CustomersService {
         firstName: user.firstName,
         lastName: user.lastName,
         dairyName: distributor.dairyName,
-        phoneNumber: distributor.phoneNumber,
+        phoneNumber: user.phoneNumber ?? '',
         name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
       },
       settings,
