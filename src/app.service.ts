@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.13',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.14',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 15,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 16,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.13',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.14',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,9 +45,10 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Customer cards: fully responsive 2-tier layout with generous space and bold metrics\n' +
-          '• High-speed dedicated VPS backend (instant load, 0 cold starts)\n' +
-          '• Real-time payment state updates and full payment CRUD support',
+        '• Real-time Net Due calculation & full payment sync across all screens\n' +
+          '• Customer Monthly Bill: instant 0.00 reflection upon full payment\n' +
+          '• WhatsApp bill export: real-time deduction of payments received\n' +
+          '• Fixed payment modal remaining due pre-fill & multi-month ledger sync',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',

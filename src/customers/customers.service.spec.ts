@@ -303,5 +303,11 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(bills[0].thisMonthPaid).toBe(60);
     expect(bills[0].thisMonthDue).toBe(60);
     expect(bills[0].hasPayment).toBe(true);
+
+    const singleBill = await service.getCustomerBillSummary('u1', 'c1', 2026, 11);
+    expect(singleBill.customerId).toBe('c1');
+    expect(singleBill.thisMonthPaid).toBe(60);
+    expect(singleBill.thisMonthDue).toBe(60);
+    expect(singleBill.hasPayment).toBe(true);
   });
 });

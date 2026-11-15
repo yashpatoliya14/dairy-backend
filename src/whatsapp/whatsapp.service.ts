@@ -47,6 +47,7 @@ export interface SendBillMessageDto {
   previousDue?: number; // optional outstanding balance
   monthToDateBill?: number; // month-to-date running bill till today
   advanceCredit?: number; // advance credit
+  paidAmount?: number; // total amount paid towards this month's bill
   netPayable?: number; // net total payable
   notes?: string;
   distributorName?: string;
@@ -287,9 +288,18 @@ export class WhatsAppService {
       : Number(dto.totalAmount ?? liters * rate);
     const previousDue = Number(dto.previousDue ?? 0);
     const advanceCredit = Number(dto.advanceCredit ?? 0);
+    const paidAmount = Number(dto.paidAmount ?? 0);
     const monthToDateBill = Number(dto.monthToDateBill ?? amount);
+    const currentMonthDue = isMonthly && paidAmount > 0
+      ? Math.max(0, amount - paidAmount)
+      : amount;
+    const excessPaid = isMonthly && paidAmount > amount ? paidAmount - amount : 0;
+    const effectiveCredit = advanceCredit + excessPaid;
+    const remainingPastDue = previousDue > effectiveCredit ? previousDue - effectiveCredit : 0;
+    const defaultMonthlyPayable = Number((currentMonthDue + remainingPastDue).toFixed(2));
+
     const totalPayable = isMonthly
-      ? Number(dto.netPayable ?? (amount + previousDue - advanceCredit))
+      ? Number(dto.netPayable ?? defaultMonthlyPayable)
       : Number(monthToDateBill + previousDue);
 
     const dateOrMonth =
@@ -320,10 +330,12 @@ export class WhatsAppService {
         `• Rate per Liter: ₹${rate.toFixed(2)}/L\n\n` +
         `💰 *BILL BREAKDOWN:*\n` +
         `• Monthly Milk Bill: ₹${amount.toFixed(2)}\n` +
+        (paidAmount > 0 ? `• Amount Received: ₹${paidAmount.toFixed(2)}\n` : '') +
+        (paidAmount > 0 && currentMonthDue > 0 ? `• Current Month Balance: ₹${currentMonthDue.toFixed(2)}\n` : '') +
         `• Past Overdue: ₹${previousDue.toFixed(2)}\n` +
         `• Advance / Credits: ₹${advanceCredit.toFixed(2)}\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
-        `⭐ *NET TOTAL PAYABLE: ₹${totalPayable.toFixed(2)}*\n` +
+        `⭐ *NET TOTAL PAYABLE: ₹${totalPayable.toFixed(2)}${totalPayable === 0 ? ' (Fully Settled)' : ''}*\n` +
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
         `📲 *Payment Options:*\n` +
         `Cash, UPI (GPay / PhonePe / Paytm), or Bank Transfer.\n\n` +

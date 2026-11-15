@@ -72,6 +72,23 @@ export class CustomersController {
     return this.customersService.getMonthlyBillsSummary(request.user.sub, y, m);
   }
 
+  @Get(':customerId/bill-summary')
+  getCustomerBillSummary(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId') customerId: string,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    const y = year ? parseInt(year, 10) : new Date().getFullYear();
+    const m = month ? parseInt(month, 10) : new Date().getMonth() + 1;
+    return this.customersService.getCustomerBillSummary(
+      request.user.sub,
+      customerId,
+      y,
+      m,
+    );
+  }
+
   @Get(':customerId/entries') 
   listEntries(
     @Req() request: AuthenticatedRequest,

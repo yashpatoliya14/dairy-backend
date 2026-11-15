@@ -102,6 +102,10 @@ export class SendBillMessageRequest {
 
   @IsOptional()
   @IsNumber()
+  paidAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
   netPayable?: number;
 
   @IsOptional()

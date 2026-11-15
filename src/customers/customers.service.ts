@@ -545,8 +545,17 @@ export class CustomersService {
     const entriesMap = new Map<string, Map<string, MilkEntry[]>>();
     for (const e of allEntries) {
       const cid = this.extractCustomerId(e.customer);
-      const eDate = e.entryDate instanceof Date ? e.entryDate : new Date(e.entryDate);
-      const key = `${eDate.getUTCFullYear()}-${String(eDate.getUTCMonth() + 1).padStart(2, '0')}`;
+      const rawDate: unknown = e.entryDate;
+      const dateStr =
+        typeof rawDate === 'string'
+          ? rawDate.slice(0, 10)
+          : rawDate instanceof Date
+            ? (!Number.isNaN(rawDate.getTime())
+                ? rawDate.toISOString().slice(0, 10)
+                : '')
+            : String(rawDate ?? '').slice(0, 10);
+      const [yearPart, monthPart] = dateStr.split('-');
+      const key = `${yearPart}-${monthPart}`;
       if (!entriesMap.has(cid)) entriesMap.set(cid, new Map());
       const cMap = entriesMap.get(cid)!;
       if (!cMap.has(key)) cMap.set(key, []);
@@ -690,6 +699,20 @@ export class CustomersService {
     });
 
     return items;
+  }
+
+  async getCustomerBillSummary(
+    userId: string,
+    customerId: string,
+    year: number,
+    month: number,
+  ) {
+    const bills = await this.getMonthlyBillsSummary(userId, year, month);
+    const item = bills.find((b) => b.customerId === customerId);
+    if (!item) {
+      throw new NotFoundException('Customer bill summary not found');
+    }
+    return item;
   }
 
   private extractCustomerId(customer: any): string {
