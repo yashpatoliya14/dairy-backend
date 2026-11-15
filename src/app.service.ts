@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.9',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.10',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 11,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 12,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.9',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.10',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,9 +45,9 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Customer bills: instant payment entry, dues tracking & ledger calculations\n' +
-          '• Responsive customer item cards and monthly bill breakdown on all screen sizes\n' +
-          '• Added Customer Bills & Dues directly from customer menu and details',
+        '• Customer tile readability: larger, bold, adaptive metric text and clean layout\n' +
+          '• Payment entries: real-time state refresh, clear remaining due, and full CRUD support\n' +
+          '• Accurate customer ledger and reliable monthly billing calculations',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',
