@@ -53,6 +53,10 @@ export async function runMigration() {
 
     CREATE INDEX IF NOT EXISTS idx_payment_entries_dist_year_month ON public.payment_entries (did, year, month);
     CREATE INDEX IF NOT EXISTS idx_payment_entries_cust_year_month ON public.payment_entries (cid, year, month);
+
+    ALTER TABLE public.distributors ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+    ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+    ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
   `);
 
   console.log('Migration completed successfully.');

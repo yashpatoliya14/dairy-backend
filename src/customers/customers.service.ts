@@ -46,6 +46,7 @@ export class CustomersService {
       price: dto.price ?? settings.defaultPrice,
       phoneNumber: dto.phoneNumber.trim(),
       notificationChannel: dto.notificationChannel as NotificationChannel,
+      isActive: true,
     });
     const em = this.customers.getEntityManager();
     em.persist(customer);

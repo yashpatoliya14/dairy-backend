@@ -47,4 +47,7 @@ export class Customer {
     default: NotificationChannel.WHATSAPP,
   })
   notificationChannel: NotificationChannel = NotificationChannel.WHATSAPP;
+
+  @Property({ type: 'boolean', fieldName: 'is_active', default: true })
+  isActive = true;
 }

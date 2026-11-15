@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -53,7 +54,14 @@ export class AuthService {
       throw new BadRequestException('Please enter a valid email address');
     }
 
-    if (await this.users.findOne({ email })) {
+    const existingEmailUser = await this.users.findOne({ email });
+    if (existingEmailUser) {
+      const dist = await this.distributors.findOne({ user: existingEmailUser });
+      if ((dist && !dist.isActive) || existingEmailUser.isActive === false) {
+        throw new ForbiddenException(
+          'This distributor account has been deactivated and cannot be reopened. Please contact support.',
+        );
+      }
       throw new ConflictException('Email is already registered');
     }
 
@@ -70,8 +78,24 @@ export class AuthService {
         phoneNumber: { $in: getPhoneSearchVariants(rawPhone) },
       });
       if (existingPhoneUser) {
+        const dist = await this.distributors.findOne({ user: existingPhoneUser });
+        if ((dist && !dist.isActive) || existingPhoneUser.isActive === false) {
+          throw new ForbiddenException(
+            'This distributor account has been deactivated and cannot be reopened. Please contact support.',
+          );
+        }
         throw new ConflictException('Mobile number is already registered');
       }
+    }
+
+    const inactiveDist = await this.distributors.findOne({
+      dairyName: dto.dairyName.trim(),
+      isActive: false,
+    });
+    if (inactiveDist) {
+      throw new ForbiddenException(
+        'This dairy account has been deactivated and cannot be reopened. Please contact support.',
+      );
     }
 
     const user = this.users.create({
@@ -84,11 +108,13 @@ export class AuthService {
       phoneNumber: normalizedPhone,
       emailVerified: false,
       role: UserRole.DISTRIBUTOR,
+      isActive: true,
     });
     const distributor = this.distributors.create({
       did: randomUUID(),
       dairyName: dto.dairyName.trim(),
       user,
+      isActive: true,
     });
     const em = this.users.getEntityManager();
     const code = this.createCode();
@@ -156,6 +182,12 @@ export class AuthService {
       throw new UnauthorizedException('Distributor account is not configured');
     }
 
+    if (!distributor.isActive || user.isActive === false) {
+      throw new UnauthorizedException(
+        'Your distributor account has been deactivated. Please contact support.',
+      );
+    }
+
     return this.issueToken(user, distributor);
   }
 
@@ -184,6 +216,11 @@ export class AuthService {
     const distributor = await this.distributors.findOne({ user });
     if (!distributor)
       throw new UnauthorizedException('Distributor account is not configured');
+    if (!distributor.isActive || user.isActive === false) {
+      throw new UnauthorizedException(
+        'Your distributor account has been deactivated. Please contact support.',
+      );
+    }
     return this.issueToken(user, distributor);
   }
 

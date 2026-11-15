@@ -76,4 +76,7 @@ export class User {
     nullable: true,
   })
   phoneNumber?: string;
+
+  @Property({ type: 'boolean', fieldName: 'is_active', default: true })
+  isActive = true;
 }

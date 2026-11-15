@@ -14,6 +14,9 @@ export class Distributor {
   @Property({ type: 'string', fieldName: 'dairy_name' })
   dairyName!: string;
 
+  @Property({ type: 'boolean', fieldName: 'is_active', default: true })
+  isActive = true;
+
   @ManyToOne(() => User, { fieldName: 'uid' })
   user!: User;
 }
