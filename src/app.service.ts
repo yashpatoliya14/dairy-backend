@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.7',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.8',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 9,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 10,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.7',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.8',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,11 +45,9 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Fixed payment dues: payments immediately reduce current month balance due\n' +
-          '• Modern high-contrast Bills section with live payment progress bar\n' +
-          '• Dedicated Bill & Entries direct action on customer items\n' +
-          '• WhatsApp monthly bill calculation strictly based on entries with ₹0.00 fallback\n' +
-          '• Persistent customer numbering and full payment & customer CRUD',
+        '• Blazing fast loading: persistent HTTP connection pooling and instant UI cache\n' +
+          '• Zero-wait background update check and streamlined startup splash\n' +
+          '• Single-request bulk billing and dashboard bootstrap performance boost',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',

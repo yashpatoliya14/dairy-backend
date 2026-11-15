@@ -53,6 +53,25 @@ export class CustomersController {
     return this.customersService.createEntry(request.user.sub, customerId, dto);
   }
 
+  @Get('bootstrap')
+  getBootstrap(
+    @Req() request: AuthenticatedRequest,
+    @Query('date') date?: string,
+  ) {
+    return this.customersService.getBootstrapData(request.user.sub, date);
+  }
+
+  @Get('monthly-bills')
+  getMonthlyBills(
+    @Req() request: AuthenticatedRequest,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ) {
+    const y = year ? parseInt(year, 10) : new Date().getFullYear();
+    const m = month ? parseInt(month, 10) : new Date().getMonth() + 1;
+    return this.customersService.getMonthlyBillsSummary(request.user.sub, y, m);
+  }
+
   @Get(':customerId/entries') 
   listEntries(
     @Req() request: AuthenticatedRequest,

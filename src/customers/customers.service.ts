@@ -441,6 +441,231 @@ export class CustomersService {
     throw new Error('Milk entry has an invalid entry date');
   }
 
+  async getBootstrapData(userId: string, dateStr?: string) {
+    const user = await this.userFor(userId);
+    const distributor = await this.distributorFor(userId);
+    const [settings, customerList, todaySummary] = await Promise.all([
+      this.settingsService.getSettings(userId),
+      this.list(userId),
+      this.whatsappService.getDailySummary(userId, dateStr),
+    ]);
+
+    return {
+      profile: {
+        id: user.uid,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        dairyName: distributor.dairyName,
+        phoneNumber: distributor.phoneNumber,
+        name: `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim(),
+      },
+      settings,
+      customers: customerList,
+      todaySummary,
+    };
+  }
+
+  async getMonthlyBillsSummary(userId: string, year: number, month: number) {
+    const distributor = await this.distributorFor(userId);
+    const customers = await this.customers.find(
+      { distributor },
+      { orderBy: { uniqueNumber: 'ASC' } },
+    );
+
+    const monthConfigs: { year: number; month: number }[] = [];
+    for (let offset = 0; offset <= 3; offset++) {
+      let y = year;
+      let m = month - offset;
+      while (m <= 0) {
+        m += 12;
+        y -= 1;
+      }
+      monthConfigs.push({ year: y, month: m });
+    }
+
+    const oldest = monthConfigs[monthConfigs.length - 1];
+    const newest = monthConfigs[0];
+
+    const newestDays = new Date(newest.year, newest.month, 0).getDate();
+    const oldestMonthStr = String(oldest.month).padStart(2, '0');
+    const newestMonthStr = String(newest.month).padStart(2, '0');
+    const newestDaysStr = String(newestDays).padStart(2, '0');
+
+    const startDate = new Date(`${oldest.year}-${oldestMonthStr}-01T00:00:00.000Z`);
+    const endDate = new Date(`${newest.year}-${newestMonthStr}-${newestDaysStr}T23:59:59.999Z`);
+
+    const paymentOrConditions = monthConfigs.map((mc) => ({
+      year: mc.year,
+      month: mc.month,
+    }));
+
+    const [allEntries, allPayments] = await Promise.all([
+      this.entries.find({
+        distributor,
+        entryDate: { $gte: startDate, $lte: endDate },
+      }),
+      this.payments.find({
+        distributor,
+        $or: paymentOrConditions,
+      }),
+    ]);
+
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
+    const entriesMap = new Map<string, Map<string, MilkEntry[]>>();
+    for (const e of allEntries) {
+      const cid = (e.customer as any)?.cid ?? (e.customer as any);
+      const eDate = e.entryDate instanceof Date ? e.entryDate : new Date(e.entryDate);
+      const key = `${eDate.getUTCFullYear()}-${String(eDate.getUTCMonth() + 1).padStart(2, '0')}`;
+      if (!entriesMap.has(cid)) entriesMap.set(cid, new Map());
+      const cMap = entriesMap.get(cid)!;
+      if (!cMap.has(key)) cMap.set(key, []);
+      cMap.get(key)!.push(e);
+    }
+
+    const paymentsMap = new Map<string, Map<string, PaymentEntry>>();
+    for (const p of allPayments) {
+      const cid = (p.customer as any)?.cid ?? (p.customer as any);
+      const key = `${p.year}-${String(p.month).padStart(2, '0')}`;
+      if (!paymentsMap.has(cid)) paymentsMap.set(cid, new Map());
+      paymentsMap.get(cid)!.set(key, p);
+    }
+
+    const currentKey = `${year}-${String(month).padStart(2, '0')}`;
+
+    const items = customers.map((c) => {
+      const cEntriesMap = entriesMap.get(c.cid) ?? new Map();
+      const cPaymentsMap = paymentsMap.get(c.cid) ?? new Map();
+      const defaultPrice = Number(c.price ?? 0);
+
+      const currentEntries = cEntriesMap.get(currentKey) ?? [];
+      let thisMonthLiters = 0;
+      let thisMonthBill = 0;
+      let activeDays = 0;
+
+      for (const e of currentEntries) {
+        const l = Number(e.liters ?? 0);
+        thisMonthLiters += l;
+        if (l > 0) activeDays++;
+        const total = Number(e.total ?? -1);
+        if (total >= 0) {
+          thisMonthBill += total;
+        } else {
+          const p = Number(e.price ?? defaultPrice);
+          thisMonthBill += Number((l * p).toFixed(2));
+        }
+      }
+      thisMonthLiters = Number(thisMonthLiters.toFixed(2));
+      thisMonthBill = Number(thisMonthBill.toFixed(2));
+
+      const curPayment = cPaymentsMap.get(currentKey);
+      const thisMonthPaid = curPayment ? Number(curPayment.receivedAmount ?? 0) : 0;
+      const paymentNote = curPayment?.note ?? '';
+      const paymentDate = curPayment?.receivedDate
+        ? curPayment.receivedDate instanceof Date
+          ? curPayment.receivedDate.toISOString()
+          : String(curPayment.receivedDate)
+        : null;
+      const hasPayment = !!curPayment;
+
+      let grossPastDue = 0;
+      let grossPastAdvance = 0;
+      const pastMonthsBreakdown: string[] = [];
+
+      for (let offset = 1; offset <= 3; offset++) {
+        const pastConfig = monthConfigs[offset];
+        const pastKey = `${pastConfig.year}-${String(pastConfig.month).padStart(2, '0')}`;
+        const pastEntries = cEntriesMap.get(pastKey) ?? [];
+        const pastPayment = cPaymentsMap.get(pastKey);
+
+        let prevBill = 0;
+        for (const e of pastEntries) {
+          const total = Number(e.total ?? -1);
+          if (total >= 0) {
+            prevBill += total;
+          } else {
+            const l = Number(e.liters ?? 0);
+            const p = Number(e.price ?? defaultPrice);
+            prevBill += Number((l * p).toFixed(2));
+          }
+        }
+        prevBill = Number(prevBill.toFixed(2));
+        const prevPaid = pastPayment ? Number(pastPayment.receivedAmount ?? 0) : 0;
+
+        if (prevBill > 0 || prevPaid > 0) {
+          const diff = prevBill - prevPaid;
+          const mName = monthNames[pastConfig.month - 1];
+          if (diff > 0.5) {
+            grossPastDue += diff;
+            pastMonthsBreakdown.push(`${mName}: ₹${diff.toFixed(0)} due`);
+          } else if (diff < -0.5) {
+            const advance = -diff;
+            grossPastAdvance += advance;
+            pastMonthsBreakdown.push(`${mName}: +₹${advance.toFixed(0)} overpaid`);
+          }
+        }
+      }
+
+      grossPastDue = Number(grossPastDue.toFixed(2));
+      grossPastAdvance = Number(grossPastAdvance.toFixed(2));
+
+      const thisMonthDue = thisMonthPaid >= thisMonthBill
+        ? 0
+        : Number((thisMonthBill - thisMonthPaid).toFixed(2));
+      const thisMonthAdvance = thisMonthPaid > thisMonthBill
+        ? Number((thisMonthPaid - thisMonthBill).toFixed(2))
+        : 0;
+
+      const creditsForPast = thisMonthAdvance + grossPastAdvance;
+      const remainingPastDue = grossPastDue > creditsForPast
+        ? Number((grossPastDue - creditsForPast).toFixed(2))
+        : 0;
+      const netAdvance = creditsForPast > grossPastDue
+        ? Number((creditsForPast - grossPastDue).toFixed(2))
+        : 0;
+      const netBalanceDue = Number((remainingPastDue + thisMonthDue).toFixed(2));
+
+      return {
+        customerId: c.cid,
+        name: c.name,
+        phone: c.phoneNumber ?? '',
+        number: String(c.uniqueNumber ?? '0'),
+        defaultPrice,
+        defaultLiters: Number(c.liters ?? 1.0),
+        thisMonthLiters,
+        thisMonthBill,
+        thisMonthPaid,
+        thisMonthDue,
+        activeDays,
+        daysInMonth: newestDays,
+        grossPastDue,
+        grossPastAdvance,
+        pastMonthsDue: remainingPastDue,
+        pastMonthsAdvance: grossPastAdvance,
+        pastMonthsBreakdown,
+        netBalanceDue,
+        netAdvance,
+        paymentNote,
+        paymentDate,
+        hasPayment,
+        customer: {
+          id: c.cid,
+          name: c.name,
+          phoneNumber: c.phoneNumber ?? '',
+          uniqueNumber: String(c.uniqueNumber ?? '0'),
+          price: defaultPrice,
+          liters: Number(c.liters ?? 1.0),
+        },
+      };
+    });
+
+    return items;
+  }
+
   private serializePayment(payment: PaymentEntry) {
     return {
       id: payment.pid,

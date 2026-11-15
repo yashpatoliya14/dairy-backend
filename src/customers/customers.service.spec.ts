@@ -261,4 +261,47 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(saved.receivedAmount).toBe(5000);
     expect(saved.note).toBe('50% advance');
   });
+
+  it('computes monthly bills summary in a single pass', async () => {
+    const fakeUser = { uid: 'u1', firstName: 'John', lastName: 'Doe' };
+    const fakeDistributor = { did: 'd1', user: fakeUser, dairyName: 'Speed Dairy' };
+    const fakeCustomer = {
+      cid: 'c1',
+      name: 'Ramesh',
+      uniqueNumber: '1',
+      distributor: fakeDistributor,
+      price: 60,
+      liters: 2,
+    };
+    mockUsersRepo.findOne.mockResolvedValue(fakeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
+    mockCustomersRepo.find.mockResolvedValue([fakeCustomer]);
+    mockEntriesRepo.find.mockResolvedValue([
+      {
+        customer: fakeCustomer,
+        entryDate: new Date('2026-11-05T00:00:00.000Z'),
+        liters: 2,
+        price: 60,
+        total: 120,
+      },
+    ]);
+    mockPaymentsRepo.find.mockResolvedValue([
+      {
+        customer: fakeCustomer,
+        year: 2026,
+        month: 11,
+        billAmount: 120,
+        receivedAmount: 60,
+        receivedDate: new Date('2026-11-10T00:00:00.000Z'),
+      },
+    ]);
+
+    const bills = await service.getMonthlyBillsSummary('u1', 2026, 11);
+    expect(bills.length).toBe(1);
+    expect(bills[0].customerId).toBe('c1');
+    expect(bills[0].thisMonthBill).toBe(120);
+    expect(bills[0].thisMonthPaid).toBe(60);
+    expect(bills[0].thisMonthDue).toBe(60);
+    expect(bills[0].hasPayment).toBe(true);
+  });
 });
