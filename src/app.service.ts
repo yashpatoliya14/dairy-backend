@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.15',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.16',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 17,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 18,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.15',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.16',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,10 +45,10 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Payment Entry: Net Total Due cleanly deducted by previous payments\n' +
-          '• Unified neat & clean Bill Summary card with clear breakdown\n' +
-          '• Add Payment mode for recording installments without overwriting previous payments\n' +
-          '• Real-time Net Due calculation & full payment sync across all screens',
+        '• Removed redundant Bills page; record payments directly from Bills & Entries\n' +
+          '• New dedicated Customer Bill Page with metrics breakdown & WhatsApp sharing\n' +
+          '• Revamped modern Login & Sign Up page with language switcher\n' +
+          '• Support & Feedback directly routed to WhatsApp +91 91041 52524',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',
