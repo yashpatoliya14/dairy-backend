@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.16',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.17',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 18,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 19,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.16',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.17',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,10 +45,10 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Removed redundant Bills page; record payments directly from Bills & Entries\n' +
-          '• New dedicated Customer Bill Page with metrics breakdown & WhatsApp sharing\n' +
-          '• Revamped modern Login & Sign Up page with language switcher\n' +
-          '• Support & Feedback directly routed to WhatsApp +91 91041 52524',
+        '• Messages section: "Entries Done" cleanly filters out already-sent messages\n' +
+          '• Real-time counts on filter tabs (Entries Done, Sent, Pending, All)\n' +
+          '• Modern redesigned "Select All Eligible" banner with interactive gradient\n' +
+          '• Instant status feedback and accurate bulk selection',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',
