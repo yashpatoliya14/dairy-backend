@@ -82,9 +82,21 @@ export class CustomersService {
     const total = Math.round((liters * price + Number.EPSILON) * 100) / 100;
     const existing = await this.entries.findOne({ customer, entryDate });
     if (existing) {
-      existing.liters = liters;
-      existing.price = price;
-      existing.total = total;
+      if (dto.mode === 'replace') {
+        existing.liters = liters;
+        existing.price = price;
+        existing.total = total;
+      } else {
+        // Default mode 'add': sum newly delivered milk with existing entry for today (e.g. 2 + 2 = 4)
+        const combinedLiters =
+          Math.round(
+            (Number(existing.liters) + Number(liters) + Number.EPSILON) * 100,
+          ) / 100;
+        existing.liters = combinedLiters;
+        existing.price = price;
+        existing.total =
+          Math.round((combinedLiters * price + Number.EPSILON) * 100) / 100;
+      }
       await this.entries.getEntityManager().flush();
       return this.serializeEntry(existing);
     }

@@ -1,5 +1,5 @@
 const targetUrl =
-  process.env.RENDER_HEALTH_URL ?? 'https://dairy-backend-eemp.onrender.com/';
+  process.env.RENDER_HEALTH_URL ?? 'https://iaj4y-3000.aiccloud.online/';
 const intervalMs = 5 * 60 * 1000;
 const requestTimeoutMs = 30 * 1000;
 

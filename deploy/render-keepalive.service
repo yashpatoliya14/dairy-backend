@@ -9,7 +9,7 @@ User=root
 Group=root
 WorkingDirectory=/root/dairy-backend
 Environment=NODE_ENV=production
-Environment=RENDER_HEALTH_URL=https://dairy-backend-eemp.onrender.com/
+Environment=RENDER_HEALTH_URL=https://iaj4y-3000.aiccloud.online/
 ExecStart=/root/.nvm/versions/node/v24.21.0/bin/node /root/dairy-backend/deploy/render-keepalive.js
 Restart=always
 RestartSec=10

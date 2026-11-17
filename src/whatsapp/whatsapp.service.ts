@@ -1281,7 +1281,13 @@ export class WhatsAppService {
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
 
-    job.status = 'completed';
+    if (job.failedCount > 0 && job.sentCount === 0) {
+      job.status = 'failed';
+    } else if (job.failedCount > 0 && job.sentCount > 0) {
+      job.status = 'partially_completed';
+    } else {
+      job.status = 'completed';
+    }
     job.completedAt = new Date().toISOString();
     this.logger.log(
       `[WhatsApp Bulk Job ${job.jobId}] Finished: ${job.sentCount} sent, ${job.failedCount} failed of ${eligibleCustomers.length} eligible.`,
