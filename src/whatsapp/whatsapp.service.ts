@@ -736,26 +736,89 @@ export class WhatsAppService {
     const effectiveDateStr =
       dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
         ? dateStr
-        : new Date().toISOString().slice(0, 10);
-
-    const entryDate = new Date(`${effectiveDateStr}T00:00:00.000Z`);
+        : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
     const allCustomers = await this.customers.find(
       { distributor },
       { orderBy: { uniqueNumber: 'ASC' } },
     );
 
-    const entries = await this.milkEntries.find({
-      distributor,
-      entryDate,
-    });
-    const entryByCid = new Map(entries.map((e) => [e.customer.cid, e]));
+    const em = this.customers.getEntityManager();
+    const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
+    let entries: Array<{
+      eid: string;
+      cid: string;
+      liters: number | string;
+      price: number | string;
+      total: number | string;
+    }> = [];
+    let logs: Array<any> = [];
 
-    const logs = await this.messageLogs.find({
-      distributor,
-      entryDate,
-    });
-    const logByCid = new Map(logs.map((l) => [l.customer.cid, l]));
+    if (conn) {
+      entries = await conn.execute<
+        Array<{
+          eid: string;
+          cid: string;
+          liters: number | string;
+          price: number | string;
+          total: number | string;
+        }>
+      >(
+        'SELECT eid, cid, liters, price, total FROM milk_entries WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
+        [distributor.did, effectiveDateStr, effectiveDateStr],
+      );
+      logs = await conn.execute<
+        Array<{
+          id: string;
+          cid: string;
+          status: string;
+          attempt_count?: number;
+          last_attempted_at?: Date | string | null;
+          message_content?: string | null;
+          provider_message_id?: string | null;
+          error_message?: string | null;
+        }>
+      >(
+        'SELECT id, cid, status, attempt_count, last_attempted_at, message_content, provider_message_id, error_message FROM daily_message_logs WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
+        [distributor.did, effectiveDateStr, effectiveDateStr],
+      );
+    } else {
+      const ormEntries = await this.milkEntries.find({ distributor });
+      entries = ormEntries
+        .filter(
+          (e) =>
+            (e.entryDate instanceof Date
+              ? e.entryDate.toISOString().slice(0, 10)
+              : String(e.entryDate).slice(0, 10)) === effectiveDateStr,
+        )
+        .map((e) => ({
+          eid: e.eid,
+          cid: e.customer.cid,
+          liters: e.liters,
+          price: e.price,
+          total: e.total,
+        }));
+      const ormLogs = await this.messageLogs.find({ distributor });
+      logs = ormLogs
+        .filter(
+          (l) =>
+            (l.entryDate instanceof Date
+              ? l.entryDate.toISOString().slice(0, 10)
+              : String(l.entryDate).slice(0, 10)) === effectiveDateStr,
+        )
+        .map((l) => ({
+          id: l.id,
+          cid: l.customer.cid,
+          status: l.status,
+          attempt_count: l.attemptCount,
+          last_attempted_at: l.lastAttemptedAt,
+          message_content: l.messageContent,
+          provider_message_id: l.providerMessageId,
+          error_message: l.errorMessage,
+        }));
+    }
+    const entryByCid = new Map(entries.map((e) => [e.cid, e]));
+    const logByCid = new Map(logs.map((l) => [l.cid, l]));
 
     let totalLiters = 0;
     let totalAmount = 0;
@@ -819,11 +882,11 @@ export class WhatsAppService {
           ? {
               id: log.id,
               status: log.status,
-              attemptCount: log.attemptCount,
-              lastAttemptedAt: log.lastAttemptedAt,
-              messageContent: log.messageContent,
-              providerMessageId: log.providerMessageId,
-              errorMessage: log.errorMessage,
+              attemptCount: (log as any).attempt_count ?? (log as any).attemptCount ?? 1,
+              lastAttemptedAt: (log as any).last_attempted_at ?? (log as any).lastAttemptedAt ?? null,
+              messageContent: (log as any).message_content ?? (log as any).messageContent ?? null,
+              providerMessageId: (log as any).provider_message_id ?? (log as any).providerMessageId ?? null,
+              errorMessage: (log as any).error_message ?? (log as any).errorMessage ?? null,
             }
           : {
               status: 'not_sent',
@@ -871,12 +934,22 @@ export class WhatsAppService {
     });
     if (!customer) throw new NotFoundException('Customer not found');
 
-    const entryDate = new Date(`${dto.date}T00:00:00.000Z`);
-    let log = await this.messageLogs.findOne({
-      distributor,
-      customer,
-      entryDate,
-    });
+    const cleanDateStr = (dto.date || '').slice(0, 10);
+    const entryDate = new Date(`${cleanDateStr}T00:00:00.000Z`);
+    const em = this.messageLogs.getEntityManager();
+    const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
+    let log: DailyMessageLog | null = null;
+    if (conn) {
+      const rawLogs = await conn.execute<Array<{ id: string }>>(
+        'SELECT id FROM daily_message_logs WHERE cid = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?)) LIMIT 1',
+        [customer.cid, cleanDateStr, cleanDateStr],
+      );
+      if (rawLogs.length > 0) {
+        log = await this.messageLogs.findOne({ id: rawLogs[0].id });
+      }
+    } else {
+      log = await this.messageLogs.findOne({ distributor, customer, entryDate });
+    }
 
     if (!log) {
       log = this.messageLogs.create({
@@ -984,30 +1057,45 @@ export class WhatsAppService {
       };
     }
 
-    const entryDate = new Date(`${dto.date}T00:00:00.000Z`);
-    const entry = await this.milkEntries.findOne({
-      distributor,
-      customer,
-      entryDate,
-    });
-
-    if (!entry) {
-      return {
-        success: false,
-        status: 'failed',
-        error: `Customer ${customer.name} does not have a milk entry for ${dto.date}`,
-      };
+    const em = this.customers.getEntityManager();
+    const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
+    const cleanDateStr = (dto.date || '').slice(0, 10);
+    let rawEntries: Array<{ eid: string; liters: number | string; price: number | string; total: number | string }> = [];
+    if (conn) {
+      rawEntries = await conn.execute(
+        'SELECT eid, liters, price, total FROM milk_entries WHERE cid = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?)) LIMIT 1',
+        [customer.cid, cleanDateStr, cleanDateStr],
+      );
+    } else {
+      const found = await this.milkEntries.findOne({
+        distributor,
+        customer,
+        entryDate: new Date(`${cleanDateStr}T00:00:00.000Z`),
+      });
+      if (found) {
+        rawEntries = [
+          { eid: found.eid, liters: found.liters, price: found.price, total: found.total },
+        ];
+      }
     }
 
-    const liters = Number(entry.liters);
-    const price = Number(entry.price);
-    const total = Number(entry.total);
+    const hasSpecificEntry = rawEntries.length > 0;
+    const liters = hasSpecificEntry
+      ? Number(rawEntries[0].liters)
+      : Number(customer.liters ?? 0);
+    const price = hasSpecificEntry
+      ? Number(rawEntries[0].price)
+      : Number(customer.price ?? 0);
+    const total = hasSpecificEntry
+      ? (rawEntries[0].total != null
+          ? Number(rawEntries[0].total)
+          : Math.round((liters * price + Number.EPSILON) * 100) / 100)
+      : Math.round((liters * price + Number.EPSILON) * 100) / 100;
 
-    const formattedDate = entryDate.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
+    const [y, m, d] = cleanDateStr.split('-');
+    const formattedDate = (y && m && d)
+      ? `${d}-${m}-${y}`
+      : new Date().toLocaleDateString('en-IN');
 
     const distributorName =
       distributor.dairyName ??
@@ -1019,15 +1107,20 @@ export class WhatsAppService {
       '+91 7600579310';
 
     try {
-      // Compute month-to-date bill for this customer (1st of month to entryDate)
-      const startOfMonth = new Date(Date.UTC(entryDate.getUTCFullYear(), entryDate.getUTCMonth(), 1));
-      const endOfEntryDate = new Date(Date.UTC(entryDate.getUTCFullYear(), entryDate.getUTCMonth(), entryDate.getUTCDate(), 23, 59, 59, 999));
-      const monthEntries = await this.milkEntries.find({
-        distributor,
-        customer,
-        entryDate: { $gte: startOfMonth, $lte: endOfEntryDate },
-      });
-      const monthToDateBill = monthEntries.reduce((sum, e) => sum + Number(e.total ?? 0), 0);
+      const monthStart = `${cleanDateStr.slice(0, 7)}-01`;
+      let monthToDateBill = total;
+      if (conn) {
+        try {
+          const monthEntries = await conn.execute<Array<{ total: number | string }>>(
+            'SELECT total FROM milk_entries WHERE cid = ? AND entry_date >= ? AND entry_date <= ?',
+            [customer.cid, monthStart, cleanDateStr],
+          );
+          const sum = monthEntries.reduce((acc, e) => acc + Number(e.total ?? 0), 0);
+          if (sum > 0) monthToDateBill = sum;
+        } catch {
+          monthToDateBill = total;
+        }
+      }
 
       const billResult = await this.sendBillMessage({
         to: phone,
@@ -1127,14 +1220,7 @@ export class WhatsAppService {
     const distributor = await this.distributors.findOne({ user });
     if (!distributor) throw new NotFoundException('Distributor not found');
 
-    const entryDate = new Date(`${dto.date}T00:00:00.000Z`);
-
-    const entries = await this.milkEntries.find({
-      distributor,
-      entryDate,
-    });
-    const entryByCid = new Map(entries.map((e) => [e.customer.cid, e]));
-
+    const cleanDateStr = (dto.date || '').slice(0, 10);
     const customers = await this.customers.find({
       distributor,
       cid: { $in: dto.customerIds },
@@ -1146,8 +1232,7 @@ export class WhatsAppService {
     for (const customer of customers) {
       const cleanCustomerPhone = (customer.phoneNumber ?? '').replace(/\D/g, '');
       const hasValidPhone = cleanCustomerPhone.length >= 10;
-      const hasEntry = entryByCid.has(customer.cid);
-      if (hasEntry && hasValidPhone) {
+      if (hasValidPhone) {
         eligibleCustomers.push(customer);
       } else {
         ineligibleCount++;
@@ -1217,17 +1302,22 @@ export class WhatsAppService {
 
     // In background: batch-mark eligible customers as pending if not already sent
     try {
-      const entryDate = new Date(`${dateStr}T00:00:00.000Z`);
+      const cleanDateStr = (dateStr || '').slice(0, 10);
+      const entryDate = new Date(`${cleanDateStr}T00:00:00.000Z`);
       const user = await this.users.findOne({ uid: job.userId });
       const distributor = user ? await this.distributors.findOne({ user }) : null;
-      if (distributor && user) {
+      const em = this.messageLogs.getEntityManager();
+      const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
+      if (distributor && user && conn) {
+        const existingLogs = await conn.execute<Array<{ id: string; cid: string; status: string }>>(
+          'SELECT id, cid, status FROM daily_message_logs WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
+          [distributor.did, cleanDateStr, cleanDateStr],
+        );
+        const logMap = new Map(existingLogs.map((l) => [l.cid, l]));
+
         for (const customer of eligibleCustomers) {
-          const log = await this.messageLogs.findOne({
-            distributor,
-            customer,
-            entryDate,
-          });
-          if (!log) {
+          const existing = logMap.get(customer.cid);
+          if (!existing) {
             const newLog = this.messageLogs.create({
               id: randomUUID(),
               customer,
@@ -1239,9 +1329,12 @@ export class WhatsAppService {
               lastAttemptedAt: new Date(),
             });
             this.messageLogs.getEntityManager().persist(newLog);
-          } else if (log.status !== 'sent') {
-            log.status = 'pending';
-            log.lastAttemptedAt = new Date();
+          } else if (existing.status !== 'sent') {
+            const loaded = await this.messageLogs.findOne({ id: existing.id });
+            if (loaded) {
+              loaded.status = 'pending';
+              loaded.lastAttemptedAt = new Date();
+            }
           }
         }
         await this.messageLogs.getEntityManager().flush();

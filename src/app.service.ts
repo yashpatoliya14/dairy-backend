@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.21',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.22',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 23,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 24,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.21',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.22',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,11 +45,10 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Customer Delete Fix: Deleting a customer now cleanly removes all records\n' +
-          '• Milk Entry Accumulation: Multiple milk entries on the same day correctly accumulate (e.g. 2 L + 3 L = 5 L)\n' +
-          '• Direct WhatsApp Support: Added 1-click native WhatsApp app & Web integration for instant messaging\n' +
-          '• Transparent Error Details: Clear error feedback if WhatsApp API credentials expire or fail\n' +
-          '• Performance & stability enhancements across admin panel and mobile app',
+        '• WhatsApp Daily & Single/Bulk Messaging Fix: Daily collection messages now reliably send via Business API\n' +
+          '• Daily Milk Entry Accumulation: Multiple milk entries on the same day correctly add together (e.g. 5 L + 3 L = 8 L)\n' +
+          '• Live Dashboard Reflection: Today\'s recorded milk entries immediately display on customer cards with "Today" indicator\n' +
+          '• Performance, reliability & stability enhancements across admin panel and mobile app',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',

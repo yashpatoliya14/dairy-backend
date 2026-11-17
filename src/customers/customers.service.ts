@@ -76,26 +76,34 @@ export class CustomersService {
   ) {
     const customer = await this.customerFor(userId, customerId);
     const distributor = await this.distributorFor(userId);
-    const entryDate = new Date(`${dto.entryDate}T00:00:00.000Z`);
+    const cleanDateStr = (dto.entryDate || '').slice(0, 10);
+    const entryDate = new Date(`${cleanDateStr}T00:00:00.000Z`);
     const liters = Math.round((Number(dto.liters) + Number.EPSILON) * 100) / 100;
     const price = Math.round((Number(dto.price) + Number.EPSILON) * 100) / 100;
     const total = Math.round((liters * price + Number.EPSILON) * 100) / 100;
-    const startOfDay = new Date(`${dto.entryDate}T00:00:00.000Z`);
-    const endOfDay = new Date(`${dto.entryDate}T23:59:59.999Z`);
-    const existing = await this.entries.findOne({
-      customer,
-      $or: [
-        { entryDate },
-        { entryDate: { $gte: startOfDay, $lte: endOfDay } },
-      ],
-    });
+
+    const em = this.entries.getEntityManager();
+    const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
+    let existing: MilkEntry | null = null;
+    if (conn) {
+      const existingRaw = await conn.execute<Array<{ eid: string }>>(
+        'SELECT eid FROM milk_entries WHERE cid = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?)) LIMIT 1',
+        [customer.cid, cleanDateStr, cleanDateStr],
+      );
+      if (existingRaw.length > 0) {
+        existing = await this.entries.findOne({ eid: existingRaw[0].eid });
+      }
+    } else {
+      existing = await this.entries.findOne({ customer, entryDate });
+    }
+
     if (existing) {
       if (dto.mode === 'replace') {
         existing.liters = liters;
         existing.price = price;
         existing.total = total;
       } else {
-        // Default mode 'add': sum newly delivered milk with existing entry for today (e.g. 2 + 2 = 4)
+        // Default mode 'add': sum newly delivered milk with existing entry for today (e.g. 5 + 3 = 8)
         const combinedLiters =
           Math.round(
             (Number(existing.liters) + Number(liters) + Number.EPSILON) * 100,
@@ -105,7 +113,7 @@ export class CustomersService {
         existing.total =
           Math.round((combinedLiters * price + Number.EPSILON) * 100) / 100;
       }
-      await this.entries.getEntityManager().flush();
+      await em.flush();
       return this.serializeEntry(existing);
     }
     const entry = this.entries.create({
@@ -118,8 +126,8 @@ export class CustomersService {
       price,
       total,
     });
-    this.entries.getEntityManager().persist(entry);
-    await this.entries.getEntityManager().flush();
+    em.persist(entry);
+    await em.flush();
     return this.serializeEntry(entry);
   }
 
@@ -257,7 +265,53 @@ export class CustomersService {
       }
       return a.uniqueNumber.localeCompare(b.uniqueNumber);
     });
-    return customers.map((customer) => this.serialize(customer));
+
+    const em = this.customers.getEntityManager();
+    const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+    }).format(new Date());
+
+    let todayEntries: Array<{
+      cid: string;
+      liters: number | string;
+      price: number | string;
+      total: number | string;
+    }> = [];
+    if (conn) {
+      try {
+        todayEntries = await conn.execute(
+          'SELECT cid, liters, price, total FROM milk_entries WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
+          [distributor.did, todayStr, todayStr],
+        );
+      } catch {
+        todayEntries = [];
+      }
+    }
+
+    const todayMap = new Map(todayEntries.map((e) => [e.cid, e]));
+
+    return customers.map((customer) => {
+      const today = todayMap.get(customer.cid);
+      const todayLiters = today != null ? Number(today.liters) : null;
+      const todayPrice = today != null ? Number(today.price) : null;
+      const todayTotal = today != null ? Number(today.total) : null;
+      return {
+        id: customer.cid,
+        name: customer.name,
+        uniqueNumber: customer.uniqueNumber,
+        defaultLiters: Number(customer.liters),
+        defaultPrice: Number(customer.price),
+        hasTodayEntry: Boolean(today),
+        todayLiters,
+        todayPrice,
+        todayTotal,
+        liters: todayLiters != null ? todayLiters : Number(customer.liters),
+        price: todayPrice != null ? todayPrice : Number(customer.price),
+        phoneNumber: customer.phoneNumber,
+        notificationChannel: customer.notificationChannel,
+      };
+    });
   }
 
   async delete(userId: string, customerId: string) {
