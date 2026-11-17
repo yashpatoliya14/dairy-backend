@@ -57,6 +57,10 @@ export async function runMigration() {
     ALTER TABLE public.distributors ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
     ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
     ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+
+    -- Ensure milk_entries cascades on customer delete
+    ALTER TABLE public.milk_entries DROP CONSTRAINT IF EXISTS milk_entries_cid_foreign;
+    ALTER TABLE public.milk_entries ADD CONSTRAINT milk_entries_cid_foreign FOREIGN KEY (cid) REFERENCES public.customers(cid) ON DELETE CASCADE;
   `);
 
   console.log('Migration completed successfully.');

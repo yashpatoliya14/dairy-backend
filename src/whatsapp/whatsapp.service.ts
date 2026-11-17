@@ -115,7 +115,7 @@ export interface BulkMessageJob {
   ineligibleCount: number;
   sentCount: number;
   failedCount: number;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'partially_completed';
   startedAt: string;
   completedAt?: string;
   results: Array<{
@@ -710,14 +710,20 @@ export class WhatsAppService {
   }
 
   private apiException(error: unknown, fallback: string): BadGatewayException {
-    const axiosError = error as AxiosError<{ error?: { message?: string } }>;
-    return new BadGatewayException(
-      axiosError.response?.data?.error?.message ??
-        (error instanceof Error ? error.message : fallback),
-    );
+    const axiosError = error as AxiosError<{ error?: { message?: string; error_data?: { details?: string } }; message?: string }>;
+    const metaError = axiosError.response?.data?.error;
+    const msg =
+      metaError?.error_data?.details ??
+      metaError?.message ??
+      axiosError.response?.data?.message ??
+      (error instanceof Error ? error.message : fallback);
+    return new BadGatewayException(msg);
   }
 
   private errorMessage(error: unknown): string {
+    const axiosError = error as AxiosError<{ error?: { message?: string; error_data?: { details?: string } } }>;
+    const metaMsg = axiosError.response?.data?.error?.message;
+    if (metaMsg) return metaMsg;
     return error instanceof Error ? error.message : 'Unknown WhatsApp error';
   }
 

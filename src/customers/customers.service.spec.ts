@@ -18,6 +18,10 @@ describe('CustomersService - Milk Entries & Card', () => {
       persist: vi.fn(),
       flush: vi.fn().mockResolvedValue(undefined),
       remove: vi.fn(),
+      clear: vi.fn(),
+      getConnection: vi.fn(() => ({
+        execute: vi.fn().mockResolvedValue([]),
+      })),
     };
 
     mockCustomersRepo = {
@@ -231,7 +235,7 @@ describe('CustomersService - Milk Entries & Card', () => {
     const res = await service.delete('u1', 'c4');
     expect(res.success).toBe(true);
     expect(res.deletedCustomerNumber).toBe('4');
-    expect(mockEntityManager.remove).toHaveBeenCalledWith(fakeCustomer);
+    expect(mockEntityManager.clear).toHaveBeenCalled();
   });
 
   it('performs payment entry CRUD properly', async () => {

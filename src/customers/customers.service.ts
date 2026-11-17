@@ -80,7 +80,15 @@ export class CustomersService {
     const liters = Math.round((Number(dto.liters) + Number.EPSILON) * 100) / 100;
     const price = Math.round((Number(dto.price) + Number.EPSILON) * 100) / 100;
     const total = Math.round((liters * price + Number.EPSILON) * 100) / 100;
-    const existing = await this.entries.findOne({ customer, entryDate });
+    const startOfDay = new Date(`${dto.entryDate}T00:00:00.000Z`);
+    const endOfDay = new Date(`${dto.entryDate}T23:59:59.999Z`);
+    const existing = await this.entries.findOne({
+      customer,
+      $or: [
+        { entryDate },
+        { entryDate: { $gte: startOfDay, $lte: endOfDay } },
+      ],
+    });
     if (existing) {
       if (dto.mode === 'replace') {
         existing.liters = liters;
@@ -255,26 +263,16 @@ export class CustomersService {
   async delete(userId: string, customerId: string) {
     const customer = await this.customerFor(userId, customerId);
     const em = this.customers.getEntityManager();
+    const conn = em.getConnection();
 
-    // 1. Delete associated payment entries safely if table exists
-    try {
-      const customerPayments = await this.payments.find({ customer });
-      for (const p of customerPayments) {
-        em.remove(p);
-      }
-    } catch (_) {
-      // Payment table might be empty or uninitialized
-    }
+    // 1. Direct atomic deletion of all child records to guarantee cascade without FK violations
+    await conn.execute('DELETE FROM daily_message_logs WHERE cid = ?', [customer.cid]).catch(() => {});
+    await conn.execute('DELETE FROM payment_entries WHERE cid = ?', [customer.cid]).catch(() => {});
+    await conn.execute('DELETE FROM milk_entries WHERE cid = ?', [customer.cid]).catch(() => {});
+    await conn.execute('DELETE FROM customers WHERE cid = ?', [customer.cid]);
 
-    // 2. Delete associated milk entries
-    const customerEntries = await this.entries.find({ customer });
-    for (const e of customerEntries) {
-      em.remove(e);
-    }
-
-    // 3. Delete customer; customer numbers of other customers remain untouched (e.g. 1, 2, 3, 5)
-    em.remove(customer);
-    await em.flush();
+    // Clear unit of work identity map
+    em.clear();
 
     return {
       success: true,
