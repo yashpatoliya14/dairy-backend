@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.19',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.23',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 21,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 25,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.19',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.23',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false

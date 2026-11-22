@@ -19,15 +19,15 @@ describe('AppController', () => {
 
   describe('version check', () => {
     it('detects update available when client version is older than latest', () => {
-      const res = appController.getAppVersion('1.0.18', '20');
+      const res = appController.getAppVersion('1.0.22', '24');
       expect(res.isUpdateAvailable).toBe(true);
       expect(res.mustForceUpdate).toBe(true);
-      expect(res.latestVersion).toBe('1.0.19');
+      expect(res.latestVersion).toBe('1.0.23');
       expect(res.downloadUrl).toContain('app-release.apk');
     });
 
     it('returns isUpdateAvailable false when client is on latest version', () => {
-      const res = appController.getAppVersion('1.0.19', '21');
+      const res = appController.getAppVersion('1.0.23', '25');
       expect(res.isUpdateAvailable).toBe(false);
       expect(res.mustForceUpdate).toBe(false);
     });
