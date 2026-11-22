@@ -1,4 +1,4 @@
-﻿import { IsDateString, IsNumber, Min } from 'class-validator';
+import { IsDateString, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateMilkEntryDto {
   @IsDateString()
@@ -11,4 +11,8 @@ export class CreateMilkEntryDto {
   @IsNumber()
   @Min(0)
   price!: number;
+
+  @IsOptional()
+  @IsString()
+  mode?: 'add' | 'replace';
 }

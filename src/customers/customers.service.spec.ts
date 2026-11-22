@@ -212,6 +212,36 @@ describe('CustomersService - Milk Entries & Card', () => {
         total: 78.13,
       }),
     );
+
+    // Re-entry test: should accumulate onto existing entry
+    const existingEntry = {
+      eid: 'e-existing',
+      customer: fakeCustomer,
+      distributor: fakeDistributor,
+      entryDate: new Date('2026-10-15T00:00:00.000Z'),
+      liters: 2.0,
+      price: 60,
+      total: 120,
+    };
+    mockEntriesRepo.findOne.mockResolvedValue(existingEntry);
+
+    const accumulated = await service.createEntry('u1', 'c1', {
+      entryDate: '2026-10-15',
+      liters: 1.5,
+      price: 60,
+    });
+    expect(accumulated.liters).toBe(3.5);
+    expect(accumulated.total).toBe(210);
+
+    // Replace mode test: should overwrite when mode is 'replace'
+    const replaced = await service.createEntry('u1', 'c1', {
+      entryDate: '2026-10-15',
+      liters: 4.0,
+      price: 60,
+      mode: 'replace',
+    });
+    expect(replaced.liters).toBe(4.0);
+    expect(replaced.total).toBe(240);
   });
 
   it('deletes customer along with payments and entries without altering other numbers', async () => {

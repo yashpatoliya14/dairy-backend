@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.18',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.19',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 20,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 21,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.18',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.19',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,13 +45,13 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Fully paid bill amount displays actual amount paid instead of 0.0\n' +
-          '• Resolved edit payment record error: edit and update payments reliably\n' +
-          '• Resilient customer identification and precise accounting synchronization',
+        '• Re-entry for milk entry now accumulates with the last entry to become today\'s final entry\n' +
+          '• Fixed WhatsApp daily milk entry messaging diagnostics & instant WhatsApp fallback\n' +
+          '• Instant WhatsApp receipt toggle directly on Daily Collection screen',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',
-      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '59.8 MB',
+      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.1 MB',
       publishedAt: new Date().toISOString(),
     };
   }

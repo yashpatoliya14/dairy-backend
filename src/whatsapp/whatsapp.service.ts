@@ -956,10 +956,16 @@ export class WhatsAppService {
     const distributor = await this.distributors.findOne({ user });
     if (!distributor) throw new NotFoundException('Distributor not found');
 
-    const customer = await this.customers.findOne({
-      cid: dto.customerId,
-      distributor,
-    });
+    const trimmedCid = dto.customerId ? String(dto.customerId).trim() : '';
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        trimmedCid,
+      );
+    const customer = await this.customers.findOne(
+      isUuid
+        ? { cid: trimmedCid, distributor }
+        : { uniqueNumber: trimmedCid, distributor },
+    );
     if (!customer) throw new NotFoundException('Customer not found');
 
     const phone = customer.phoneNumber?.trim();
@@ -979,11 +985,20 @@ export class WhatsAppService {
     }
 
     const entryDate = new Date(`${dto.date}T00:00:00.000Z`);
-    const entry = await this.milkEntries.findOne({
+    let entry = await this.milkEntries.findOne({
       distributor,
       customer,
       entryDate,
     });
+    if (!entry) {
+      const startOfDay = new Date(`${dto.date}T00:00:00.000Z`);
+      const endOfDay = new Date(`${dto.date}T23:59:59.999Z`);
+      entry = await this.milkEntries.findOne({
+        distributor,
+        customer,
+        entryDate: { $gte: startOfDay, $lte: endOfDay },
+      });
+    }
 
     if (!entry) {
       return {
