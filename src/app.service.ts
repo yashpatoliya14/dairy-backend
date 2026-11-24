@@ -30,29 +30,30 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.26',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.27',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 28,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 29,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.26',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.27',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'New Version Available! 🚀',
+        'DairyDesk v1.0.27 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Fixed billing, advance, payment and due calculation rules\n' +
+        '• Verified billing, advance, payment and due calculation rules\n' +
           '• Corrected milk rate decimal precision (57.25)\n' +
           '• Consolidated WhatsApp daily message templates onto Meta-approved format\n' +
+          '• Distinct release file: DairyDesk_v1.0.27_Update.apk\n' +
           '• Performance, reliability & stability enhancements across admin panel and mobile app',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/raw/main/release/app-release.apk',
-      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.1 MB',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.27/DairyDesk_v1.0.27_Update.apk',
+      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.2 MB',
       publishedAt: new Date().toISOString(),
     };
   }
