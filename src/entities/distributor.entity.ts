@@ -19,4 +19,12 @@ export class Distributor {
 
   @ManyToOne(() => User, { fieldName: 'uid' })
   user!: User;
+
+  @Property({
+    type: 'datetime',
+    defaultRaw: 'CURRENT_TIMESTAMP',
+    fieldName: 'created_at',
+    nullable: true,
+  })
+  createdAt?: Date = new Date();
 }

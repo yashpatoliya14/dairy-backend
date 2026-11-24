@@ -5,25 +5,27 @@ import {
   Param,
   Patch,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { DistributorsService, CustomerFilterQuery } from './distributors.service.js';
+import {
+  DistributorsService,
+  CustomerFilterQuery,
+} from './distributors.service.js';
+import { AdminAuthGuard } from '../auth/admin-auth.guard.js';
 
 @Controller('distributors')
+@UseGuards(AdminAuthGuard)
 export class DistributorsController {
   constructor(private readonly distributorsService: DistributorsService) {}
 
-  @Get()
-  listDistributors(@Query('search') search?: string) {
-    return this.distributorsService.listDistributors(search);
+  @Get('stats')
+  getStats() {
+    return this.distributorsService.getStats();
   }
 
-  @Patch(':did/status')
-  updateStatus(
-    @Param('did') did: string,
-    @Body() body: { isActive: boolean },
-  ) {
-    const isActive = body?.isActive === true;
-    return this.distributorsService.updateStatus(did, isActive);
+  @Get('transactions')
+  getTransactions() {
+    return this.distributorsService.getTransactions();
   }
 
   @Get('customers')
@@ -40,5 +42,32 @@ export class DistributorsController {
       status,
     };
     return this.distributorsService.listCustomers(filter);
+  }
+
+  @Get('customers/:cid')
+  getCustomerDetails(@Param('cid') cid: string) {
+    return this.distributorsService.getCustomerDetails(cid);
+  }
+
+  @Get(':did')
+  getDistributorDetails(@Param('did') did: string) {
+    return this.distributorsService.getDistributorDetails(did);
+  }
+
+  @Patch(':did/status')
+  updateStatus(
+    @Param('did') did: string,
+    @Body() body: { isActive: boolean },
+  ) {
+    const isActive = body?.isActive === true;
+    return this.distributorsService.updateStatus(did, isActive);
+  }
+
+  @Get()
+  listDistributors(
+    @Query('search') search?: string,
+    @Query('status') status?: 'active' | 'inactive' | 'all',
+  ) {
+    return this.distributorsService.listDistributors(search, status);
   }
 }

@@ -1,5 +1,6 @@
 ﻿export interface AuthenticatedUser {
   sub: string;
-  did: string;
+  did?: string;
   email: string;
+  role: string;
 }

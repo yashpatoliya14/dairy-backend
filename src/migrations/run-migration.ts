@@ -55,12 +55,18 @@ export async function runMigration() {
     CREATE INDEX IF NOT EXISTS idx_payment_entries_cust_year_month ON public.payment_entries (cid, year, month);
 
     ALTER TABLE public.distributors ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
+    ALTER TABLE public.distributors ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP;
     ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
     ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 
     -- Ensure milk_entries cascades on customer delete
     ALTER TABLE public.milk_entries DROP CONSTRAINT IF EXISTS milk_entries_cid_foreign;
     ALTER TABLE public.milk_entries ADD CONSTRAINT milk_entries_cid_foreign FOREIGN KEY (cid) REFERENCES public.customers(cid) ON DELETE CASCADE;
+
+    -- Ensure authorized platform owners have ADMIN role
+    UPDATE public.users 
+    SET role = 'admin' 
+    WHERE LOWER(email) IN ('hareshsambad426@gmail.com', 'yashpatoliya14@gmail.com');
   `);
 
   console.log('Migration completed successfully.');

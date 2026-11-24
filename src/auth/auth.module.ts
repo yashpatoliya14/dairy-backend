@@ -7,6 +7,7 @@ import { User } from '../entities/user.entity.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
+import { AdminAuthGuard } from './admin-auth.guard.js';
 import { MailService } from './mail.service.js';
 
 @Module({
@@ -33,7 +34,7 @@ import { MailService } from './mail.service.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, MailService],
-  exports: [JwtModule, JwtAuthGuard],
+  providers: [AuthService, JwtAuthGuard, AdminAuthGuard, MailService],
+  exports: [JwtModule, JwtAuthGuard, AdminAuthGuard],
 })
 export class AuthModule {}

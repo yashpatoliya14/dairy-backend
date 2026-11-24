@@ -177,6 +177,13 @@ export class AuthService {
       );
     }
 
+    // Role check: Admin credentials cannot log into the distributor application
+    if (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Admin credentials cannot access the distributor application. Please use the Admin Panel.',
+      );
+    }
+
     const distributor = await this.distributors.findOne({ user });
     if (!distributor) {
       throw new UnauthorizedException('Distributor account is not configured');
@@ -189,6 +196,54 @@ export class AuthService {
     }
 
     return this.issueToken(user, distributor);
+  }
+
+  async adminLogin(dto: LoginDto) {
+    const rawIdentifier = (dto.email ?? '').trim();
+    if (!rawIdentifier) {
+      throw new BadRequestException('Email address is required');
+    }
+
+    let user: User | null = null;
+    const isEmailInput = rawIdentifier.includes('@');
+
+    if (isEmailInput) {
+      const email = rawIdentifier.toLowerCase();
+      if (!isValidEmail(email)) {
+        throw new BadRequestException('Please enter a valid email address');
+      }
+      user = await this.users.findOne({ email });
+    } else if (isPhoneNumber(rawIdentifier)) {
+      const variants = getPhoneSearchVariants(rawIdentifier);
+      user = await this.users.findOne({
+        phoneNumber: { $in: variants },
+      });
+    }
+
+    const passwordMatches =
+      user && (await bcrypt.compare(dto.password, user.passwordHash));
+
+    if (!user || !passwordMatches) {
+      throw new UnauthorizedException(
+        'Invalid email or password. Please try again.',
+      );
+    }
+
+    // Role check: Only ADMIN and SUPER_ADMIN allowed
+    const role = (user.role || '').toLowerCase();
+    if (role !== UserRole.ADMIN && role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Access denied. This application is restricted to authorized administrators.',
+      );
+    }
+
+    if (user.isActive === false) {
+      throw new ForbiddenException(
+        'Your administrator account has been deactivated. Please contact support.',
+      );
+    }
+
+    return this.issueAdminToken(user);
   }
 
   async verifyEmail(dto: VerifyEmailDto) {
@@ -369,7 +424,11 @@ export class AuthService {
       email: user.email,
       phoneNumber: user.phoneNumber ?? '',
       role: user.role,
-      dairyName: distributor?.dairyName || 'Dairy Desk',
+      dairyName:
+        distributor?.dairyName ||
+        (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN
+          ? 'Milk Admin Platform'
+          : 'Dairy Desk'),
     };
   }
 
@@ -444,15 +503,43 @@ export class AuthService {
   }
 
   private issueToken(user: User, distributor: Distributor) {
-    const payload = { sub: user.uid, did: distributor.did, email: user.email };
+    const payload = {
+      sub: user.uid,
+      did: distributor.did,
+      email: user.email,
+      role: user.role,
+    };
     return {
       accessToken: this.jwtService.sign(payload),
       expiresIn: 2592000,
       user: {
         id: user.uid,
         email: user.email,
+        role: user.role,
         phoneNumber: user.phoneNumber ?? null,
         dairyName: distributor.dairyName,
+      },
+    };
+  }
+
+  private issueAdminToken(user: User) {
+    const payload = {
+      sub: user.uid,
+      email: user.email,
+      role: user.role,
+    };
+    return {
+      accessToken: this.jwtService.sign(payload),
+      expiresIn: 2592000,
+      user: {
+        id: user.uid,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        name: user.name || `${user.firstName} ${user.lastName}`.trim(),
+        role: user.role,
+        phoneNumber: user.phoneNumber ?? null,
+        dairyName: 'Milk Admin Platform',
       },
     };
   }

@@ -33,10 +33,20 @@ describe('Distributor Status & Inactivation Flow', () => {
       getEntityManager: vi.fn().mockReturnValue(mockEm),
     };
 
+    const mockMilkEntriesRepo: any = {
+      find: vi.fn().mockResolvedValue([]),
+    };
+
+    const mockPaymentsRepo: any = {
+      find: vi.fn().mockResolvedValue([]),
+    };
+
     distributorsService = new DistributorsService(
       mockDistributorsRepo,
       mockCustomersRepo,
       mockUsersRepo,
+      mockMilkEntriesRepo,
+      mockPaymentsRepo,
     );
   });
 
