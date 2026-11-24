@@ -3,7 +3,11 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import axios, { type AxiosAdapter } from 'axios';
 import { SendBillMessageRequest } from './whatsapp.dto.js';
-import { WhatsAppService } from './whatsapp.service.js';
+import {
+  WhatsAppService,
+  buildDailyMilkDeliveryParameters,
+  buildDailyMilkDeliveryTextMessage,
+} from './whatsapp.service.js';
 
 describe('SendBillMessageRequest', () => {
   it('validates monthly requests without requiring daily liters', async () => {
@@ -264,5 +268,73 @@ describe('WhatsAppService.sendBillMessage', () => {
         ratePerLiter: 60,
       }),
     ).rejects.toThrow('WhatsApp is not configured');
+  });
+
+  describe('Bug 3 Consolidation: Central Daily Message Builder', () => {
+    it('produces the exact 9 approved parameters in strict order for daily_milk_delivery_update', () => {
+      const params = buildDailyMilkDeliveryParameters({
+        customerName: 'Ramesh Patel',
+        dateStr: '24-Nov-2026',
+        session: 'Morning',
+        liters: 2.5,
+        ratePerLiter: 57.25,
+        todayAmount: 143.13,
+        monthToDateBill: 1431.25,
+        previousDue: 250.0,
+        totalPayable: 1681.25,
+        distributorName: 'Haresh Dairy',
+        distributorPhone: '+91 9104152524',
+      });
+
+      expect(params).toHaveLength(9);
+      expect(params[0]).toBe('Ramesh Patel'); // Customer Name
+      expect(params[1]).toBe('24-Nov-2026 (Morning)'); // Date & Shift
+      expect(params[2]).toBe('2.5 L'); // Liters
+      expect(params[3]).toBe('57.25'); // Rate
+      expect(params[4]).toBe('143.13'); // Today's Amount
+      expect(params[5]).toBe('1431.25'); // Month-to-date Bill
+      expect(params[6]).toBe('250.00'); // Previous Due
+      expect(params[7]).toBe('1681.25'); // Total Payable
+      expect(params[8]).toBe('Haresh Dairy (+91 9104152524)'); // Contact
+    });
+
+    it('produces structured plain text message matching template fields', () => {
+      const text = buildDailyMilkDeliveryTextMessage({
+        customerName: 'Suresh Kumar',
+        dateStr: '24-Nov-2026',
+        liters: 1.0,
+        ratePerLiter: 60.0,
+        distributorName: 'Dairy Desk',
+      });
+
+      expect(text).toContain('DAILY MILK COLLECTION UPDATE');
+      expect(text).toContain('Suresh Kumar');
+      expect(text).toContain('1.0 L @ ₹60.00/L');
+      expect(text).toContain('Today\'s Amount:* ₹60.00');
+      expect(text).toContain('TOTAL AMOUNT TO PAY: ₹60.00');
+      expect(text).toContain('Dairy Desk');
+    });
+
+    it('enforces daily_milk_delivery_update when legacy or custom templateName is supplied for daily bills', async () => {
+      await service.sendBillMessage({
+        to: '919876543210',
+        customerName: 'Test Customer',
+        type: 'daily',
+        liters: 2,
+        ratePerLiter: 57.25,
+        templateName: 'dairy_milk_bill_update', // legacy mismatched template
+      });
+
+      // Must be consolidated to 'daily_milk_delivery_update'
+      expect(requests[0].body).toMatchObject({
+        type: 'template',
+        template: {
+          name: 'daily_milk_delivery_update',
+          language: { code: 'en' },
+        },
+      });
+      const bodyParams = (requests[0].body as any).template.components[0].parameters;
+      expect(bodyParams).toHaveLength(9);
+    });
   });
 });

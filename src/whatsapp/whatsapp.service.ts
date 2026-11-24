@@ -6,6 +6,99 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError, AxiosInstance } from 'axios';
+import { calculateEntryTotal, roundToCurrency } from '../customers/billing.utils.js';
+
+export interface DailyMilkDeliveryParamsInput {
+  customerName: string;
+  dateStr: string;
+  session?: string;
+  liters: number;
+  ratePerLiter: number;
+  todayAmount?: number;
+  monthToDateBill?: number;
+  previousDue?: number;
+  totalPayable?: number;
+  distributorName: string;
+  distributorPhone?: string;
+}
+
+/**
+ * Single source of truth message builder for Meta-approved daily milk delivery template.
+ * Produces the exact 9 parameters for 'daily_milk_delivery_update'.
+ */
+export function buildDailyMilkDeliveryParameters(
+  input: DailyMilkDeliveryParamsInput,
+): string[] {
+  const sessionSuffix = input.session ? ` (${input.session})` : '';
+  const dateAndSession = `${input.dateStr}${sessionSuffix}`;
+  const litersStr = `${input.liters.toFixed(1)} L`;
+  const rateStr = input.ratePerLiter.toFixed(2);
+  const todayAmount = roundToCurrency(
+    input.todayAmount ?? calculateEntryTotal(input.liters, input.ratePerLiter),
+  );
+  const monthToDateBill = roundToCurrency(
+    input.monthToDateBill ?? todayAmount,
+  );
+  const previousDue = roundToCurrency(Math.max(0, input.previousDue ?? 0));
+  const totalPayable = roundToCurrency(
+    input.totalPayable ?? (monthToDateBill + previousDue),
+  );
+  const contactInfo = input.distributorPhone
+    ? `${input.distributorName} (${input.distributorPhone})`
+    : input.distributorName;
+
+  return [
+    input.customerName,
+    dateAndSession,
+    litersStr,
+    rateStr,
+    todayAmount.toFixed(2),
+    monthToDateBill.toFixed(2),
+    previousDue.toFixed(2),
+    totalPayable.toFixed(2),
+    contactInfo,
+  ];
+}
+
+/**
+ * Single source of truth message builder for plain text daily milk delivery notifications.
+ */
+export function buildDailyMilkDeliveryTextMessage(
+  input: DailyMilkDeliveryParamsInput,
+): string {
+  const sessionSuffix = input.session ? ` (${input.session})` : '';
+  const dateAndSession = `${input.dateStr}${sessionSuffix}`;
+  const todayAmount = roundToCurrency(
+    input.todayAmount ?? calculateEntryTotal(input.liters, input.ratePerLiter),
+  );
+  const monthToDateBill = roundToCurrency(
+    input.monthToDateBill ?? todayAmount,
+  );
+  const previousDue = roundToCurrency(Math.max(0, input.previousDue ?? 0));
+  const totalPayable = roundToCurrency(
+    input.totalPayable ?? (monthToDateBill + previousDue),
+  );
+
+  return (
+    `🥛 *DAILY MILK COLLECTION UPDATE*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `Hello *${input.customerName}*,\n\n` +
+    `Your milk delivery has been recorded successfully:\n\n` +
+    `📅 *Date & Shift:* ${dateAndSession}\n` +
+    `🥛 *Today's Milk:* ${input.liters.toFixed(1)} L @ ₹${input.ratePerLiter.toFixed(2)}/L\n` +
+    `💵 *Today's Amount:* ₹${todayAmount.toFixed(2)}\n\n` +
+    `📊 *ACCOUNT BALANCE STATUS:*\n` +
+    `• Current Month (Till Date): ₹${monthToDateBill.toFixed(2)}\n` +
+    `• Past Overdue: ₹${previousDue.toFixed(2)}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `💳 *TOTAL AMOUNT TO PAY: ₹${totalPayable.toFixed(2)}*\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `📞 *Dairy Owner Contact:*\n` +
+    `• Name: ${input.distributorName}\n` +
+    (input.distributorPhone ? `• Contact: ${input.distributorPhone}\n\n` : `\n`) +
+    `Thank you for choosing our dairy service! 🥛`
+  );
+}
 
 export interface SendTextMessageDto {
   to: string;
@@ -343,34 +436,30 @@ export class WhatsAppService {
         `• Name: ${distributorName}\n` +
         `• Contact: ${distributorPhone}\n\n` +
         `Thank you for your business! Please settle your bill on time. 🥛`
-      : `🥛 *DAILY MILK COLLECTION UPDATE*\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `Hello *${dto.customerName}*,\n\n` +
-        `Your milk delivery has been recorded successfully:\n\n` +
-        `📅 *Date & Shift:* ${dateOrMonth}${sessionSuffix}\n` +
-        `🥛 *Today's Milk:* ${liters.toFixed(1)} L @ ₹${rate.toFixed(2)}/L\n` +
-        `💵 *Today's Amount:* ₹${amount.toFixed(2)}\n\n` +
-        `📊 *ACCOUNT BALANCE STATUS:*\n` +
-        `• Current Month (Till Date): ₹${monthToDateBill.toFixed(2)}\n` +
-        `• Past Overdue: ₹${previousDue.toFixed(2)}\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n` +
-        `💳 *TOTAL AMOUNT TO PAY: ₹${totalPayable.toFixed(2)}*\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n\n` +
-        `📞 *Dairy Owner Contact:*\n` +
-        `• Name: ${distributorName}\n` +
-        `• Contact: ${distributorPhone}\n\n` +
-        `Thank you for choosing our dairy service! 🥛`;
+      : buildDailyMilkDeliveryTextMessage({
+          customerName: dto.customerName,
+          dateStr: dateOrMonth,
+          session: dto.deliverySession,
+          liters,
+          ratePerLiter: rate,
+          todayAmount: amount,
+          monthToDateBill,
+          previousDue,
+          totalPayable,
+          distributorName,
+          distributorPhone,
+        });
 
     const normalizedTo = this.normalizePhoneNumber(dto.to);
     const maskedTo = this.maskPhoneNumber(normalizedTo);
 
     if (dto.useTemplate !== false) {
-      const defaultTemplate = isMonthly
-        ? (this.config.get<string>('WHATSAPP_MONTHLY_TEMPLATE_NAME') ??
-           this.config.get<string>('WHATSAPP_MILK_BILL_TEMPLATE_NAME') ??
+      const templateName = isMonthly
+        ? (dto.templateName ??
+           this.config.get<string>('WHATSAPP_MONTHLY_TEMPLATE_NAME') ??
            'monthly_milk_bill_settlement')
-        : (this.config.get<string>('WHATSAPP_DAILY_TEMPLATE_NAME') ?? 'daily_milk_delivery_update');
-      const templateName = dto.templateName ?? defaultTemplate;
+        : 'daily_milk_delivery_update'; // Consolidated single approved daily template
+
       let languageCode =
         dto.languageCode ??
         this.config.get<string>('WHATSAPP_TEMPLATE_LANGUAGE') ??
@@ -387,22 +476,21 @@ export class WhatsAppService {
       }
 
       let bodyParameters: string[];
-      if (templateName === 'daily_milk_delivery_update' || (!isMonthly && templateName.includes('daily'))) {
-        const contactInfo = distributorPhone
-          ? `${distributorName} (${distributorPhone})`
-          : distributorName;
-        bodyParameters = [
-          dto.customerName,
-          `${dateOrMonth}${sessionSuffix}`,
-          `${liters.toFixed(1)} L`,
-          rate.toFixed(2),
-          amount.toFixed(2),
-          monthToDateBill.toFixed(2),
-          previousDue.toFixed(2),
-          totalPayable.toFixed(2),
-          contactInfo,
-        ];
-      } else if (templateName === 'monthly_milk_bill_settlement' || isMonthly) {
+      if (!isMonthly) {
+        bodyParameters = buildDailyMilkDeliveryParameters({
+          customerName: dto.customerName,
+          dateStr: dateOrMonth,
+          session: dto.deliverySession,
+          liters,
+          ratePerLiter: rate,
+          todayAmount: amount,
+          monthToDateBill,
+          previousDue,
+          totalPayable,
+          distributorName,
+          distributorPhone,
+        });
+      } else {
         bodyParameters = [
           dto.customerName,
           dto.monthName ?? dateOrMonth,
@@ -412,16 +500,6 @@ export class WhatsAppService {
           amount.toFixed(2),
           previousDue.toFixed(2),
           advanceCredit.toFixed(2),
-          totalPayable.toFixed(2),
-          distributorName,
-          distributorPhone,
-        ];
-      } else {
-        bodyParameters = [
-          dto.customerName,
-          dateOrMonth,
-          `${liters.toFixed(1)} L`,
-          rate.toFixed(2),
           totalPayable.toFixed(2),
           distributorName,
           distributorPhone,
@@ -1106,9 +1184,11 @@ export class WhatsAppService {
       this.config.get<string>('WHATSAPP_DISTRIBUTOR_PHONE') ??
       '+91 7600579310';
 
+    let monthToDateBill = total;
+    let previousDue = 0;
+
     try {
       const monthStart = `${cleanDateStr.slice(0, 7)}-01`;
-      let monthToDateBill = total;
       if (conn) {
         try {
           const monthEntries = await conn.execute<Array<{ total: number | string }>>(
@@ -1116,9 +1196,27 @@ export class WhatsAppService {
             [customer.cid, monthStart, cleanDateStr],
           );
           const sum = monthEntries.reduce((acc, e) => acc + Number(e.total ?? 0), 0);
-          if (sum > 0) monthToDateBill = sum;
+          if (sum > 0) monthToDateBill = roundToCurrency(sum);
+
+          const pastEntries = await conn.execute<Array<{ total: number | string }>>(
+            'SELECT total FROM milk_entries WHERE cid = ? AND entry_date < ?',
+            [customer.cid, monthStart],
+          );
+          const pastBills = pastEntries.reduce((acc, e) => acc + Number(e.total ?? 0), 0);
+
+          const curY = Number(cleanDateStr.slice(0, 4));
+          const curM = Number(cleanDateStr.slice(5, 7));
+          const pastPayments = await conn.execute<Array<{ received_amount: number | string }>>(
+            'SELECT received_amount FROM payment_entries WHERE cid = ? AND (year < ? OR (year = ? AND month < ?))',
+            [customer.cid, curY, curY, curM],
+          );
+          const pastPaid = pastPayments.reduce((acc, p) => acc + Number(p.received_amount ?? 0), 0);
+          if (pastBills > pastPaid) {
+            previousDue = roundToCurrency(pastBills - pastPaid);
+          }
         } catch {
           monthToDateBill = total;
+          previousDue = 0;
         }
       }
 
@@ -1129,6 +1227,7 @@ export class WhatsAppService {
         ratePerLiter: price,
         totalAmount: total,
         monthToDateBill: monthToDateBill > 0 ? monthToDateBill : total,
+        previousDue,
         type: 'daily',
         date: formattedDate,
         distributorName,
@@ -1157,12 +1256,18 @@ export class WhatsAppService {
       try {
         const textToSend =
           dto.message ??
-          `Milk Delivery Update (${formattedDate})\n` +
-          `Hello ${customer.name},\n` +
-          `Quantity: ${liters.toFixed(1)} L\n` +
-          `Rate: ₹${price.toFixed(2)}/L\n` +
-          `Total: ₹${total.toFixed(2)}\n` +
-          `Dairy: ${distributorName}`;
+          buildDailyMilkDeliveryTextMessage({
+            customerName: customer.name,
+            dateStr: formattedDate,
+            liters,
+            ratePerLiter: price,
+            todayAmount: total,
+            monthToDateBill: monthToDateBill > 0 ? monthToDateBill : total,
+            previousDue,
+            totalPayable: roundToCurrency(monthToDateBill + previousDue),
+            distributorName,
+            distributorPhone,
+          });
 
         const textResult = await this.sendTextMessage({
           to: phone,
