@@ -63,6 +63,10 @@ export async function runMigration() {
     ALTER TABLE public.milk_entries DROP CONSTRAINT IF EXISTS milk_entries_cid_foreign;
     ALTER TABLE public.milk_entries ADD CONSTRAINT milk_entries_cid_foreign FOREIGN KEY (cid) REFERENCES public.customers(cid) ON DELETE CASCADE;
 
+    -- Ensure user expiry columns use timestamptz
+    ALTER TABLE public.users ALTER COLUMN reset_expires_at TYPE TIMESTAMPTZ USING reset_expires_at::timestamptz;
+    ALTER TABLE public.users ALTER COLUMN verification_expires_at TYPE TIMESTAMPTZ USING verification_expires_at::timestamptz;
+
     -- Ensure authorized platform owners have ADMIN role
     UPDATE public.users 
     SET role = 'admin' 

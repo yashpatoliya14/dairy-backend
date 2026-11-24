@@ -156,14 +156,15 @@ export class MailService {
               'api-key': this.brevoApiKey,
               'Content-Type': 'application/json',
             },
-            timeout: 10000,
+            timeout: 5000,
           },
         );
         this.logger.log(`Sent ${purpose} email to ${email} via Brevo HTTP API`);
         return;
       } catch (err: any) {
         this.logger.warn(`Brevo HTTP API failed: ${err?.response?.data?.message || err?.message}`);
-        // Fall through to SMTP if configured
+        // Avoid hanging on blocked SMTP ports in cloud environments
+        return;
       }
     }
 

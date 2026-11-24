@@ -44,7 +44,7 @@ export class User {
   verificationCodeHash?: string;
 
   @Property({
-    type: 'date',
+    type: 'datetime',
     fieldName: 'verification_expires_at',
     nullable: true,
     hidden: true,
@@ -60,7 +60,7 @@ export class User {
   resetCodeHash?: string;
 
   @Property({
-    type: 'date',
+    type: 'datetime',
     fieldName: 'reset_expires_at',
     nullable: true,
     hidden: true,

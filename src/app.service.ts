@@ -30,12 +30,12 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.22',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.26',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 24,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 28,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.22',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.26',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
@@ -45,9 +45,9 @@ export class AppService {
         'New Version Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• WhatsApp Daily & Single/Bulk Messaging Fix: Daily collection messages now reliably send via Business API\n' +
-          '• Daily Milk Entry Accumulation: Multiple milk entries on the same day correctly add together (e.g. 5 L + 3 L = 8 L)\n' +
-          '• Live Dashboard Reflection: Today\'s recorded milk entries immediately display on customer cards with "Today" indicator\n' +
+        '• Fixed billing, advance, payment and due calculation rules\n' +
+          '• Corrected milk rate decimal precision (57.25)\n' +
+          '• Consolidated WhatsApp daily message templates onto Meta-approved format\n' +
           '• Performance, reliability & stability enhancements across admin panel and mobile app',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
