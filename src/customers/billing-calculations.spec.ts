@@ -356,4 +356,40 @@ describe('Central Billing Calculation & Accounting Rules', () => {
     expect(result.remainingDue).toBe(0);
     expect(result.remainingAdvance).toBe(250);
   });
+
+  describe('Bug 2: Decimal Precision & Rate Calculations (57.25)', () => {
+    it('accurately computes 57.25 milk rate for various quantities', () => {
+      // 1 liter @ 57.25 = 57.25
+      expect(calculateEntryTotal(1.0, 57.25)).toBe(57.25);
+
+      // 2.5 liters @ 57.25 = 143.125 -> 143.13
+      expect(calculateEntryTotal(2.5, 57.25)).toBe(143.13);
+
+      // 30 liters @ 57.25 = 1717.50
+      expect(calculateEntryTotal(30.0, 57.25)).toBe(1717.5);
+
+      // 0.75 liters @ 57.25 = 42.9375 -> 42.94
+      expect(calculateEntryTotal(0.75, 57.25)).toBe(42.94);
+    });
+
+    it('avoids floating point drift in monthly billing with 57.25 rate', () => {
+      // 30 days of 1.5 L @ 57.25: each daily entry is 1.5 * 57.25 = 85.875 -> rounded to 85.88
+      // 30 days * 85.88 = 2576.40
+      const entries = Array.from({ length: 30 }, (_, i) => ({
+        liters: 1.5,
+        price: 57.25,
+        entryDate: `2026-11-${String(i + 1).padStart(2, '0')}`,
+      }));
+
+      const summary = calculateBillingPeriod({
+        entries,
+        previousBalance: 0,
+        paymentsReceived: 0,
+      });
+
+      expect(summary.totalQuantity).toBe(45.0);
+      expect(summary.billingPeriodAmount).toBe(2576.4);
+      expect(summary.remainingDue).toBe(2576.4);
+    });
+  });
 });

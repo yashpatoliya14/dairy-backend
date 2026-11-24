@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { SettingsService } from '../settings/settings.service.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
-import { calculateCustomerLedger } from './billing.utils.js';
+import { calculateCustomerLedger, calculateEntryTotal, roundToCurrency } from './billing.utils.js';
 
 @Injectable()
 export class CustomersService {
@@ -79,9 +79,9 @@ export class CustomersService {
     const distributor = await this.distributorFor(userId);
     const cleanDateStr = (dto.entryDate || '').slice(0, 10);
     const entryDate = new Date(`${cleanDateStr}T00:00:00.000Z`);
-    const liters = Math.round((Number(dto.liters) + Number.EPSILON) * 100) / 100;
-    const price = Math.round((Number(dto.price) + Number.EPSILON) * 100) / 100;
-    const total = Math.round((liters * price + Number.EPSILON) * 100) / 100;
+    const liters = roundToCurrency(Number(dto.liters) || 0);
+    const price = roundToCurrency(Number(dto.price) || 0);
+    const total = calculateEntryTotal(liters, price);
 
     const em = this.entries.getEntityManager();
     const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
@@ -105,14 +105,10 @@ export class CustomersService {
         existing.total = total;
       } else {
         // Default mode 'add': sum newly delivered milk with existing entry for today (e.g. 5 + 3 = 8)
-        const combinedLiters =
-          Math.round(
-            (Number(existing.liters) + Number(liters) + Number.EPSILON) * 100,
-          ) / 100;
+        const combinedLiters = roundToCurrency(Number(existing.liters) + liters);
         existing.liters = combinedLiters;
         existing.price = price;
-        existing.total =
-          Math.round((combinedLiters * price + Number.EPSILON) * 100) / 100;
+        existing.total = calculateEntryTotal(combinedLiters, price);
       }
       await em.flush();
       return this.serializeEntry(existing);
@@ -198,20 +194,18 @@ export class CustomersService {
       },
       { orderBy: { entryDate: 'ASC' } },
     );
-    const totalLiters = entries.reduce(
-      (sum, e) => sum + Number(e.liters || 0),
-      0,
+    const totalLiters = roundToCurrency(
+      entries.reduce((sum, e) => sum + Number(e.liters || 0), 0),
     );
-    const totalAmount = entries.reduce(
-      (sum, e) =>
-        sum +
-        (e.total != null
-          ? Number(e.total)
-          : Math.round(
-              (Number(e.liters || 0) * Number(e.price || 0) + Number.EPSILON) *
-                100,
-            ) / 100),
-      0,
+    const totalAmount = roundToCurrency(
+      entries.reduce(
+        (sum, e) =>
+          sum +
+          (e.total != null
+            ? Number(e.total)
+            : calculateEntryTotal(Number(e.liters || 0), Number(e.price || 0))),
+        0,
+      ),
     );
     return {
       year,
