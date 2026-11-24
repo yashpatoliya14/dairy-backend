@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   roundToCurrency,
   calculateEntryTotal,
+  calculateBillingPeriod,
   calculateBillingPeriodSummary,
+  calculateCustomerLedger,
 } from './billing.utils.js';
 
-describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
+describe('Central Billing Calculation & Accounting Rules', () => {
   it('1. calculates normal daily billing accurately', () => {
     // 2.5 Liters @ Rs 60.00 = Rs 150.00
     const total = calculateEntryTotal(2.5, 60.0);
@@ -18,6 +20,7 @@ describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
     });
     expect(summary.totalQuantity).toBe(1.5);
     expect(summary.billingPeriodAmount).toBe(82.5);
+    expect(summary.remainingDue).toBe(82.5);
     expect(summary.netPayable).toBe(82.5);
   });
 
@@ -27,6 +30,7 @@ describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
     });
     expect(summary.totalQuantity).toBe(2.0);
     expect(summary.billingPeriodAmount).toBe(110.0);
+    expect(summary.remainingDue).toBe(110.0);
     expect(summary.netPayable).toBe(110.0);
   });
 
@@ -41,19 +45,7 @@ describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
     expect(summary.billingPeriodAmount).toBe(150.0);
   });
 
-  it('5. handles zero quantity safely without error', () => {
-    const total = calculateEntryTotal(0, 60);
-    expect(total).toBe(0);
-
-    const summary = calculateBillingPeriodSummary({
-      entries: [{ liters: 0, price: 60 }],
-    });
-    expect(summary.totalQuantity).toBe(0);
-    expect(summary.billingPeriodAmount).toBe(0);
-    expect(summary.netPayable).toBe(0);
-  });
-
-  it('6. avoids floating point errors with odd decimal quantities', () => {
+  it('5. avoids floating point errors with odd decimal quantities', () => {
     // 1.15 L * 63.33 = 72.8295 -> 72.83
     const total = calculateEntryTotal(1.15, 63.33);
     expect(total).toBe(72.83);
@@ -63,7 +55,7 @@ describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
     expect(totalQuantity).toBe(0.3);
   });
 
-  it('7. supports different milk rates per entry', () => {
+  it('6. supports different milk rates per entry', () => {
     const summary = calculateBillingPeriodSummary({
       entries: [
         { liters: 2.0, price: 50 }, // 100
@@ -73,7 +65,7 @@ describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
     expect(summary.billingPeriodAmount).toBe(220.0);
   });
 
-  it('8. handles variable rates across a billing period', () => {
+  it('7. handles variable rates across a billing period', () => {
     const summary = calculateBillingPeriodSummary({
       entries: [
         { liters: 3.0, price: 58.5 }, // 175.50
@@ -84,8 +76,7 @@ describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
     expect(summary.billingPeriodAmount).toBe(328.5);
   });
 
-  it('9. handles missing entry days appropriately (only active days count)', () => {
-    // Customer delivered milk on 3 out of 7 days
+  it('8. handles missing entry days appropriately (only active days count)', () => {
     const summary = calculateBillingPeriodSummary({
       entries: [
         { liters: 1.0, price: 60 },
@@ -93,89 +84,276 @@ describe('Phase 6 Billing Accuracy & Financial Logic Audit', () => {
         { liters: 1.0, price: 60 },
       ],
     });
-    expect(summary.entries).toBeUndefined(); // internal
     expect(summary.totalQuantity).toBe(3.0);
     expect(summary.billingPeriodAmount).toBe(180.0);
   });
 
-  it('10. carries forward previous outstanding balance correctly', () => {
-    const summary = calculateBillingPeriodSummary({
-      entries: [{ liters: 10, price: 60 }], // 600
-      previousBalance: 250.5,
-    });
-    expect(summary.billingPeriodAmount).toBe(600.0);
-    expect(summary.previousBalance).toBe(250.5);
-    expect(summary.netPayable).toBe(850.5);
-  });
-
-  it('11. accounts for partial payments received', () => {
-    const summary = calculateBillingPeriodSummary({
-      entries: [{ liters: 10, price: 60 }], // 600
-      previousBalance: 100, // 700 total
-      paymentsReceived: 400, // remaining 300
-    });
-    expect(summary.payments).toBe(400);
-    expect(summary.remainingBalance).toBe(300);
-    expect(summary.netPayable).toBe(300);
-  });
-
-  it('12. handles full payment (zero balance)', () => {
-    const summary = calculateBillingPeriodSummary({
-      entries: [{ liters: 10, price: 60 }], // 600
-      paymentsReceived: 600,
-    });
-    expect(summary.remainingBalance).toBe(0);
-  });
-
-  it('13. handles advance payments and negative balance (credit state)', () => {
-    const summary = calculateBillingPeriodSummary({
-      entries: [{ liters: 5, price: 60 }], // 300
-      paymentsReceived: 500, // Customer paid 500 in advance
-    });
-    // Remaining balance is -200 (credit to customer)
-    expect(summary.remainingBalance).toBe(-200);
-  });
-
-  it('14. applies discounts and additional charges consistently', () => {
+  it('9. applies discounts and additional charges consistently', () => {
     const summary = calculateBillingPeriodSummary({
       entries: [{ liters: 10, price: 60 }], // 600
       adjustmentsOrCharges: 25, // container fee
       discounts: 50, // festival discount
       paymentsReceived: 200,
     });
-    // 600 + 25 - 50 - 200 = 375
+    // 600 + 25 - 50 = 575 payable; 200 payment applied -> remainingDue 375
     expect(summary.charges).toBe(25);
     expect(summary.discounts).toBe(50);
+    expect(summary.payableBeforeAdvance).toBe(575);
+    expect(summary.remainingDue).toBe(375);
     expect(summary.netPayable).toBe(375);
   });
 
-  it('15. correctly reconciles customers with zero milk entries in the period', () => {
-    const summary = calculateBillingPeriodSummary({
+  // ==========================================
+  // MANDATORY EDGE-CASE TESTS (Prompt Section 5.B)
+  // ==========================================
+
+  it('Edge Case 1: Zero bill', () => {
+    const result = calculateBillingPeriod({
       entries: [],
-      previousBalance: 120,
+      previousBalance: 0,
+      paymentsReceived: 0,
     });
-    expect(summary.totalQuantity).toBe(0);
-    expect(summary.billingPeriodAmount).toBe(0);
-    expect(summary.netPayable).toBe(120);
+    expect(result.billingPeriodAmount).toBe(0);
+    expect(result.remainingDue).toBe(0);
+    expect(result.remainingAdvance).toBe(0);
   });
 
-  it('16. verified formula: Net Payable = Billing Period Amount + Previous Outstanding + Charges - Discounts - Payments', () => {
-    const B = 1450.75;
-    const O = 320.0;
-    const C = 15.0;
-    const D = 25.5;
-    const P = 1000.0;
+  it('Edge Case 2: Zero advance', () => {
+    const result = calculateBillingPeriod({
+      entries: [{ liters: 5, price: 60 }], // 300
+      availableAdvance: 0,
+      paymentsReceived: 0,
+    });
+    expect(result.payableBeforeAdvance).toBe(300);
+    expect(result.advanceApplied).toBe(0);
+    expect(result.remainingDue).toBe(300);
+    expect(result.remainingAdvance).toBe(0);
+  });
 
-    const summary = calculateBillingPeriodSummary({
-      entries: [{ liters: 1, price: B }],
-      previousBalance: O,
-      adjustmentsOrCharges: C,
-      discounts: D,
-      paymentsReceived: P,
+  it('Edge Case 3: Advance greater than current bill', () => {
+    // Current bill: 300, Available advance: 500, Previous due: 0
+    const result = calculateBillingPeriod({
+      entries: [{ liters: 5, price: 60 }], // 300
+      availableAdvance: 500,
+      paymentsReceived: 0,
+    });
+    // Advance applied = min(500, 300) = 300
+    // Remaining due = 0 (never negative)
+    // Advance carried forward = 200
+    expect(result.payableBeforeAdvance).toBe(300);
+    expect(result.advanceApplied).toBe(300);
+    expect(result.remainingDue).toBe(0);
+    expect(result.remainingAdvance).toBe(200);
+  });
+
+  it('Edge Case 4: Advance greater than total payable (Prompt Rule 3 example)', () => {
+    // Previous due: 200, Current bill: 300, Available advance: 700
+    const result = calculateBillingPeriod({
+      entries: [{ liters: 5, price: 60 }], // 300
+      previousBalance: 200, // 200
+      availableAdvance: 700,
+      paymentsReceived: 0,
+    });
+    // Payable before advance = 200 + 300 = 500
+    // Advance applied = min(700, 500) = 500
+    // Remaining due = 0
+    // Advance carried forward = 200
+    expect(result.payableBeforeAdvance).toBe(500);
+    expect(result.advanceApplied).toBe(500);
+    expect(result.dueAfterAdvance).toBe(0);
+    expect(result.remainingDue).toBe(0);
+    expect(result.remainingAdvance).toBe(200);
+  });
+
+  it('Edge Case 5: Previous due without a current bill', () => {
+    const result = calculateBillingPeriod({
+      entries: [],
+      previousBalance: 350.5,
+      paymentsReceived: 0,
+    });
+    expect(result.billingPeriodAmount).toBe(0);
+    expect(result.payableBeforeAdvance).toBe(350.5);
+    expect(result.remainingDue).toBe(350.5);
+    expect(result.remainingAdvance).toBe(0);
+  });
+
+  it('Edge Case 6: Payment equal to outstanding due', () => {
+    const result = calculateBillingPeriod({
+      entries: [{ liters: 10, price: 60 }], // 600
+      paymentsReceived: 600,
+    });
+    expect(result.paymentsAppliedToDue).toBe(600);
+    expect(result.remainingDue).toBe(0);
+    expect(result.excessPayment).toBe(0);
+    expect(result.remainingAdvance).toBe(0);
+  });
+
+  it('Edge Case 7: Payment greater than outstanding due (Prompt Rule 2 example)', () => {
+    // Outstanding due: 500, Customer payment: 700
+    const result = calculateBillingPeriod({
+      entries: [],
+      previousBalance: 500,
+      paymentsReceived: 700,
+    });
+    // Remaining due = 0
+    // Advance balance = 200
+    expect(result.payableBeforeAdvance).toBe(500);
+    expect(result.paymentsAppliedToDue).toBe(500);
+    expect(result.remainingDue).toBe(0);
+    expect(result.excessPayment).toBe(200);
+    expect(result.remainingAdvance).toBe(200);
+  });
+
+  it('Edge Case 8: Multiple payments on the same day / month', () => {
+    // Two payments: 300 + 400 = 700 towards 500 bill
+    const result = calculateBillingPeriod({
+      entries: [{ liters: 10, price: 50 }], // 500
+      paymentsReceived: 700, // 300 + 400
+    });
+    expect(result.remainingDue).toBe(0);
+    expect(result.remainingAdvance).toBe(200);
+  });
+
+  it('Edge Case 9 & 10: Multiple payments & month-boundary calculations across billing periods', () => {
+    // Month 1 (Oct 2026): 10L @ 60 = 600. Payment: 800.
+    // -> Remaining due: 0, Advance carried forward: 200.
+    // Month 2 (Nov 2026): 5L @ 60 = 300. Payment: 50.
+    // -> Payable before advance: 300. Advance applied: 200. Due after advance: 100.
+    // -> Payment: 50 applied to due. Remaining due: 50, Advance: 0.
+    const ledger = calculateCustomerLedger({
+      entries: [
+        { entryDate: '2026-10-15', liters: 10, price: 60, total: 600 },
+        { entryDate: '2026-11-10', liters: 5, price: 60, total: 300 },
+      ],
+      payments: [
+        { year: 2026, month: 10, receivedAmount: 800 },
+        { year: 2026, month: 11, receivedAmount: 50 },
+      ],
+      targetYear: 2026,
+      targetMonth: 11,
     });
 
-    const expected = roundToCurrency(B + O + C - D - P);
-    expect(summary.netPayable).toBe(expected);
-    expect(summary.netPayable).toBe(760.25);
+    expect(ledger.grossPastDue).toBe(0);
+    expect(ledger.grossPastAdvance).toBe(200);
+    expect(ledger.thisMonthBill).toBe(300);
+    expect(ledger.thisMonthPaid).toBe(50);
+    expect(ledger.advanceApplied).toBe(200);
+    expect(ledger.thisMonthDue).toBe(50);
+    expect(ledger.netBalanceDue).toBe(50);
+    expect(ledger.netAdvance).toBe(0);
+  });
+
+  it('Edge Case 11 & 12: Editing and deleting an existing bill dynamically recalculates future balances', () => {
+    // Initial state: Oct bill 600, Oct payment 600 -> Nov opening 0. Nov bill 200 -> Nov due 200.
+    const initialLedger = calculateCustomerLedger({
+      entries: [
+        { entryDate: '2026-10-15', liters: 10, price: 60, total: 600 },
+        { entryDate: '2026-11-10', liters: 5, price: 40, total: 200 },
+      ],
+      payments: [{ year: 2026, month: 10, receivedAmount: 600 }],
+      targetYear: 2026,
+      targetMonth: 11,
+    });
+    expect(initialLedger.grossPastDue).toBe(0);
+    expect(initialLedger.netBalanceDue).toBe(200);
+
+    // Edit Oct bill from 600 to 400 (e.g. corrected quantity from 10 to 6.67):
+    // Now Oct payment of 600 yields 200 advance!
+    // Nov bill of 200 is completely absorbed by the 200 advance -> Nov netBalanceDue = 0!
+    const editedLedger = calculateCustomerLedger({
+      entries: [
+        { entryDate: '2026-10-15', liters: 6.67, price: 60, total: 400 },
+        { entryDate: '2026-11-10', liters: 5, price: 40, total: 200 },
+      ],
+      payments: [{ year: 2026, month: 10, receivedAmount: 600 }],
+      targetYear: 2026,
+      targetMonth: 11,
+    });
+    expect(editedLedger.grossPastAdvance).toBe(200);
+    expect(editedLedger.advanceApplied).toBe(200);
+    expect(editedLedger.netBalanceDue).toBe(0);
+
+    // Delete Oct bill completely:
+    // Entire 600 payment becomes advance. Nov bill of 200 consumes 200 advance -> Net advance remaining = 400!
+    const deletedBillLedger = calculateCustomerLedger({
+      entries: [
+        { entryDate: '2026-11-10', liters: 5, price: 40, total: 200 },
+      ],
+      payments: [{ year: 2026, month: 10, receivedAmount: 600 }],
+      targetYear: 2026,
+      targetMonth: 11,
+    });
+    expect(deletedBillLedger.grossPastAdvance).toBe(600);
+    expect(deletedBillLedger.advanceApplied).toBe(200);
+    expect(deletedBillLedger.netBalanceDue).toBe(0);
+    expect(deletedBillLedger.netAdvance).toBe(400);
+  });
+
+  it('Edge Case 13 & 14: Editing and deleting an existing payment dynamically recalculates balances', () => {
+    // Oct bill 500, Oct payment 500. Nov bill 300, payment 0 -> Nov due 300.
+    const baseline = calculateCustomerLedger({
+      entries: [
+        { entryDate: '2026-10-01', liters: 10, price: 50, total: 500 },
+        { entryDate: '2026-11-01', liters: 6, price: 50, total: 300 },
+      ],
+      payments: [{ year: 2026, month: 10, receivedAmount: 500 }],
+      targetYear: 2026,
+      targetMonth: 11,
+    });
+    expect(baseline.grossPastDue).toBe(0);
+    expect(baseline.netBalanceDue).toBe(300);
+
+    // Edit payment: Oct payment increased to 700 -> creates 200 advance.
+    // Nov bill 300 - 200 advance = 100 due.
+    const paymentEdited = calculateCustomerLedger({
+      entries: [
+        { entryDate: '2026-10-01', liters: 10, price: 50, total: 500 },
+        { entryDate: '2026-11-01', liters: 6, price: 50, total: 300 },
+      ],
+      payments: [{ year: 2026, month: 10, receivedAmount: 700 }],
+      targetYear: 2026,
+      targetMonth: 11,
+    });
+    expect(paymentEdited.grossPastAdvance).toBe(200);
+    expect(paymentEdited.netBalanceDue).toBe(100);
+
+    // Delete payment: Oct payment deleted (0 received).
+    // Oct leaves 500 due. Nov bill 300 + 500 past due = 800 total due!
+    const paymentDeleted = calculateCustomerLedger({
+      entries: [
+        { entryDate: '2026-10-01', liters: 10, price: 50, total: 500 },
+        { entryDate: '2026-11-01', liters: 6, price: 50, total: 300 },
+      ],
+      payments: [],
+      targetYear: 2026,
+      targetMonth: 11,
+    });
+    expect(paymentDeleted.grossPastDue).toBe(500);
+    expect(paymentDeleted.netBalanceDue).toBe(800);
+  });
+
+  it('Edge Case 15: Advance carried forward to the next month', () => {
+    const ledger = calculateCustomerLedger({
+      entries: [{ entryDate: '2026-09-01', liters: 1, price: 100, total: 100 }],
+      payments: [{ year: 2026, month: 9, receivedAmount: 500 }],
+      targetYear: 2026,
+      targetMonth: 10,
+    });
+    expect(ledger.grossPastDue).toBe(0);
+    expect(ledger.grossPastAdvance).toBe(400);
+    expect(ledger.netAdvance).toBe(400);
+    expect(ledger.netBalanceDue).toBe(0);
+  });
+
+  it('Edge Case 16: Customer with zero outstanding due and remaining advance', () => {
+    const result = calculateBillingPeriod({
+      entries: [{ liters: 2, price: 50 }], // 100
+      availableAdvance: 350,
+      paymentsReceived: 0,
+    });
+    expect(result.payableBeforeAdvance).toBe(100);
+    expect(result.advanceApplied).toBe(100);
+    expect(result.remainingDue).toBe(0);
+    expect(result.remainingAdvance).toBe(250);
   });
 });

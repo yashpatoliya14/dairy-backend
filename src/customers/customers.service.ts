@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { SettingsService } from '../settings/settings.service.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
+import { calculateCustomerLedger } from './billing.utils.js';
 
 @Injectable()
 export class CustomersService {
@@ -556,38 +557,15 @@ export class CustomersService {
       { orderBy: { uniqueNumber: 'ASC' } },
     );
 
-    const monthConfigs: { year: number; month: number }[] = [];
-    for (let offset = 0; offset <= 3; offset++) {
-      let y = year;
-      let m = month - offset;
-      while (m <= 0) {
-        m += 12;
-        y -= 1;
-      }
-      monthConfigs.push({ year: y, month: m });
-    }
+    const daysInTargetMonth = new Date(year, month, 0).getDate();
+    const targetMonthEnd = new Date(Date.UTC(year, month - 1, daysInTargetMonth, 23, 59, 59, 999));
 
-    const oldest = monthConfigs[monthConfigs.length - 1];
-    const newest = monthConfigs[0];
-
-    const newestDays = new Date(newest.year, newest.month, 0).getDate();
-    const oldestMonthStr = String(oldest.month).padStart(2, '0');
-    const newestMonthStr = String(newest.month).padStart(2, '0');
-    const newestDaysStr = String(newestDays).padStart(2, '0');
-
-    const startDate = new Date(`${oldest.year}-${oldestMonthStr}-01T00:00:00.000Z`);
-    const endDate = new Date(`${newest.year}-${newestMonthStr}-${newestDaysStr}T23:59:59.999Z`);
-
-    const paymentOrConditions = monthConfigs.map((mc) => ({
-      year: mc.year,
-      month: mc.month,
-    }));
-
+    // Load all historical entries and payments up to the target month for exact chronological ledger calculation
     const [allEntries, allPayments] = await Promise.all([
       this.entries.find(
         {
           distributor,
-          entryDate: { $gte: startDate, $lte: endDate },
+          entryDate: { $lte: targetMonthEnd },
         },
         { populate: ['customer'] },
       ),
@@ -595,139 +573,53 @@ export class CustomersService {
         .find(
           {
             distributor,
-            $or: paymentOrConditions,
+            $or: [
+              { year: { $lt: year } },
+              { year, month: { $lte: month } },
+            ],
           },
           { populate: ['customer'] },
         )
         .catch(() => []),
     ]);
 
-    const monthNames = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-
-    const entriesMap = new Map<string, Map<string, MilkEntry[]>>();
+    const entriesMap = new Map<string, Array<{ entryDate: Date | string; liters: number; price: number; total?: number }>>();
     for (const e of allEntries) {
       const cid = this.extractCustomerId(e.customer);
-      const rawDate: unknown = e.entryDate;
-      const dateStr =
-        typeof rawDate === 'string'
-          ? rawDate.slice(0, 10)
-          : rawDate instanceof Date
-            ? (!Number.isNaN(rawDate.getTime())
-                ? rawDate.toISOString().slice(0, 10)
-                : '')
-            : String(rawDate ?? '').slice(0, 10);
-      const [yearPart, monthPart] = dateStr.split('-');
-      const key = `${yearPart}-${monthPart}`;
-      if (!entriesMap.has(cid)) entriesMap.set(cid, new Map());
-      const cMap = entriesMap.get(cid)!;
-      if (!cMap.has(key)) cMap.set(key, []);
-      cMap.get(key)!.push(e);
+      if (!entriesMap.has(cid)) entriesMap.set(cid, []);
+      entriesMap.get(cid)!.push({
+        entryDate: e.entryDate,
+        liters: Number(e.liters ?? 0),
+        price: Number(e.price ?? 0),
+        total: e.total != null ? Number(e.total) : undefined,
+      });
     }
 
-    const paymentsMap = new Map<string, Map<string, PaymentEntry>>();
+    const paymentsMap = new Map<string, Array<{ year: number; month: number; receivedAmount: number; note?: string; receivedDate?: Date | string | null }>>();
     for (const p of allPayments) {
       const cid = this.extractCustomerId(p.customer);
-      const key = `${p.year}-${String(p.month).padStart(2, '0')}`;
-      if (!paymentsMap.has(cid)) paymentsMap.set(cid, new Map());
-      paymentsMap.get(cid)!.set(key, p);
+      if (!paymentsMap.has(cid)) paymentsMap.set(cid, []);
+      paymentsMap.get(cid)!.push({
+        year: p.year,
+        month: p.month,
+        receivedAmount: Number(p.receivedAmount ?? 0),
+        note: p.note ?? '',
+        receivedDate: p.receivedDate,
+      });
     }
 
-    const currentKey = `${year}-${String(month).padStart(2, '0')}`;
-
     const items = customers.map((c) => {
-      const cEntriesMap = entriesMap.get(c.cid) ?? new Map();
-      const cPaymentsMap = paymentsMap.get(c.cid) ?? new Map();
       const defaultPrice = Number(c.price ?? 0);
+      const cEntries = entriesMap.get(c.cid) ?? [];
+      const cPayments = paymentsMap.get(c.cid) ?? [];
 
-      const currentEntries = cEntriesMap.get(currentKey) ?? [];
-      let thisMonthLiters = 0;
-      let thisMonthBill = 0;
-      let activeDays = 0;
-
-      for (const e of currentEntries) {
-        const l = Number(e.liters ?? 0);
-        thisMonthLiters += l;
-        if (l > 0) activeDays++;
-        const total = Number(e.total ?? -1);
-        if (total >= 0) {
-          thisMonthBill += total;
-        } else {
-          const p = Number(e.price ?? defaultPrice);
-          thisMonthBill += Number((l * p).toFixed(2));
-        }
-      }
-      thisMonthLiters = Number(thisMonthLiters.toFixed(2));
-      thisMonthBill = Number(thisMonthBill.toFixed(2));
-
-      const curPayment = cPaymentsMap.get(currentKey);
-      const thisMonthPaid = curPayment ? Number(curPayment.receivedAmount ?? 0) : 0;
-      const paymentNote = curPayment?.note ?? '';
-      const paymentDate = curPayment?.receivedDate
-        ? curPayment.receivedDate instanceof Date
-          ? curPayment.receivedDate.toISOString()
-          : String(curPayment.receivedDate)
-        : null;
-      const hasPayment = !!curPayment;
-
-      let grossPastDue = 0;
-      let grossPastAdvance = 0;
-      const pastMonthsBreakdown: string[] = [];
-
-      for (let offset = 1; offset <= 3; offset++) {
-        const pastConfig = monthConfigs[offset];
-        const pastKey = `${pastConfig.year}-${String(pastConfig.month).padStart(2, '0')}`;
-        const pastEntries = cEntriesMap.get(pastKey) ?? [];
-        const pastPayment = cPaymentsMap.get(pastKey);
-
-        let prevBill = 0;
-        for (const e of pastEntries) {
-          const total = Number(e.total ?? -1);
-          if (total >= 0) {
-            prevBill += total;
-          } else {
-            const l = Number(e.liters ?? 0);
-            const p = Number(e.price ?? defaultPrice);
-            prevBill += Number((l * p).toFixed(2));
-          }
-        }
-        prevBill = Number(prevBill.toFixed(2));
-        const prevPaid = pastPayment ? Number(pastPayment.receivedAmount ?? 0) : 0;
-
-        if (prevBill > 0 || prevPaid > 0) {
-          const diff = prevBill - prevPaid;
-          const mName = monthNames[pastConfig.month - 1];
-          if (diff > 0.5) {
-            grossPastDue += diff;
-            pastMonthsBreakdown.push(`${mName}: ₹${diff.toFixed(0)} due`);
-          } else if (diff < -0.5) {
-            const advance = -diff;
-            grossPastAdvance += advance;
-            pastMonthsBreakdown.push(`${mName}: +₹${advance.toFixed(0)} overpaid`);
-          }
-        }
-      }
-
-      grossPastDue = Number(grossPastDue.toFixed(2));
-      grossPastAdvance = Number(grossPastAdvance.toFixed(2));
-
-      const thisMonthDue = thisMonthPaid >= thisMonthBill
-        ? 0
-        : Number((thisMonthBill - thisMonthPaid).toFixed(2));
-      const thisMonthAdvance = thisMonthPaid > thisMonthBill
-        ? Number((thisMonthPaid - thisMonthBill).toFixed(2))
-        : 0;
-
-      const creditsForPast = thisMonthAdvance + grossPastAdvance;
-      const remainingPastDue = grossPastDue > creditsForPast
-        ? Number((grossPastDue - creditsForPast).toFixed(2))
-        : 0;
-      const netAdvance = creditsForPast > grossPastDue
-        ? Number((creditsForPast - grossPastDue).toFixed(2))
-        : 0;
-      const netBalanceDue = Number((remainingPastDue + thisMonthDue).toFixed(2));
+      const ledger = calculateCustomerLedger({
+        entries: cEntries,
+        payments: cPayments,
+        targetYear: year,
+        targetMonth: month,
+        defaultPrice,
+      });
 
       return {
         customerId: c.cid,
@@ -736,22 +628,22 @@ export class CustomersService {
         number: String(c.uniqueNumber ?? '0'),
         defaultPrice,
         defaultLiters: Number(c.liters ?? 1.0),
-        thisMonthLiters,
-        thisMonthBill,
-        thisMonthPaid,
-        thisMonthDue,
-        activeDays,
-        daysInMonth: newestDays,
-        grossPastDue,
-        grossPastAdvance,
-        pastMonthsDue: remainingPastDue,
-        pastMonthsAdvance: grossPastAdvance,
-        pastMonthsBreakdown,
-        netBalanceDue,
-        netAdvance,
-        paymentNote,
-        paymentDate,
-        hasPayment,
+        thisMonthLiters: ledger.totalQuantity,
+        thisMonthBill: ledger.thisMonthBill,
+        thisMonthPaid: ledger.thisMonthPaid,
+        thisMonthDue: ledger.thisMonthDue,
+        activeDays: ledger.activeDays,
+        daysInMonth: daysInTargetMonth,
+        grossPastDue: ledger.grossPastDue,
+        grossPastAdvance: ledger.grossPastAdvance,
+        pastMonthsDue: ledger.pastMonthsDue,
+        pastMonthsAdvance: ledger.pastMonthsAdvance,
+        pastMonthsBreakdown: ledger.pastMonthsBreakdown,
+        netBalanceDue: ledger.netBalanceDue,
+        netAdvance: ledger.netAdvance,
+        paymentNote: ledger.paymentNote,
+        paymentDate: ledger.paymentDate,
+        hasPayment: ledger.hasPayment,
         customer: {
           id: c.cid,
           name: c.name,
