@@ -418,7 +418,17 @@ export class AuthService {
   async profile(uid: string) {
     const user = await this.users.findOne({ uid });
     if (!user) throw new UnauthorizedException('User account not found');
+    if (user.isActive === false) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact support.',
+      );
+    }
     const distributor = await this.distributors.findOne({ user });
+    if (distributor && distributor.isActive === false) {
+      throw new UnauthorizedException(
+        'Your distributor account has been deactivated. Please contact support.',
+      );
+    }
     return {
       id: user.uid,
       name: `${user.firstName} ${user.lastName}`.trim(),
@@ -438,9 +448,19 @@ export class AuthService {
   async updateProfile(uid: string, dto: UpdateProfileDto) {
     const user = await this.users.findOne({ uid });
     if (!user) throw new UnauthorizedException('User account not found');
+    if (user.isActive === false) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact support.',
+      );
+    }
     const distributor = await this.distributors.findOne({ user });
     if (!distributor) {
       throw new UnauthorizedException('Distributor account is not configured');
+    }
+    if (distributor.isActive === false) {
+      throw new UnauthorizedException(
+        'Your distributor account has been deactivated. Please contact support.',
+      );
     }
 
     if (dto.firstName !== undefined) {
@@ -494,10 +514,12 @@ export class AuthService {
 
   async changePassword(uid: string, dto: ChangePasswordDto) {
     const user = await this.users.findOne({ uid });
-    if (
-      !user ||
-      !(await bcrypt.compare(dto.currentPassword, user.passwordHash))
-    ) {
+    if (!user || user.isActive === false) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact support.',
+      );
+    }
+    if (!(await bcrypt.compare(dto.currentPassword, user.passwordHash))) {
       throw new UnauthorizedException('Current password is incorrect');
     }
     user.passwordHash = await bcrypt.hash(dto.newPassword, 12);

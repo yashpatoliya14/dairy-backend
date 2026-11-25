@@ -6,16 +6,23 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@mikro-orm/nestjs';
+import { EntityRepository } from '@mikro-orm/postgresql';
 import type { Request } from 'express';
 import type { AuthenticatedUser } from './auth.types.js';
+import { User } from '../entities/user.entity.js';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedUser };
 
 @Injectable()
 export class AdminAuthGuard implements CanActivate {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    @InjectRepository(User)
+    private readonly users?: EntityRepository<User>,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const header = request.headers.authorization;
     if (!header?.startsWith('Bearer ')) {
@@ -39,6 +46,20 @@ export class AdminAuthGuard implements CanActivate {
       );
     }
 
+    if (this.users) {
+      return this.validateUserActive(user.sub);
+    }
+
+    return true;
+  }
+
+  private async validateUserActive(uid: string): Promise<boolean> {
+    const dbUser = await this.users!.findOne({ uid });
+    if (!dbUser || dbUser.isActive === false) {
+      throw new UnauthorizedException(
+        'Your administrator account has been deactivated. Please contact support.',
+      );
+    }
     return true;
   }
 }

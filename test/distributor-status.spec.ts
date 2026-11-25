@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DistributorsService } from '../src/distributors/distributors.service.js';
 import { UnauthorizedException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AuthService } from '../src/auth/auth.service.js';
+import { JwtAuthGuard } from '../src/auth/jwt-auth.guard.js';
 
 describe('Distributor Status & Inactivation Flow', () => {
   let distributorsService: DistributorsService;
@@ -213,5 +214,132 @@ describe('Auth Service Inactive Distributor Protection', () => {
         dairyName: 'Banned Dairy',
       }),
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('blocks profile access with 401 if user or distributor is inactive', async () => {
+    const inactiveUser = {
+      uid: 'u-1',
+      email: 'deactivated@dairy.com',
+      isActive: false,
+    };
+    mockUsersRepo.findOne.mockResolvedValue(inactiveUser);
+
+    await expect(authService.profile('u-1')).rejects.toThrow(UnauthorizedException);
+
+    const activeUser = {
+      uid: 'u-2',
+      email: 'active@dairy.com',
+      isActive: true,
+    };
+    const inactiveDist = {
+      did: 'd-2',
+      dairyName: 'Inactive Dairy',
+      isActive: false,
+      user: activeUser,
+    };
+    mockUsersRepo.findOne.mockResolvedValue(activeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(inactiveDist);
+
+    await expect(authService.profile('u-2')).rejects.toThrow(UnauthorizedException);
+  });
+});
+
+describe('JwtAuthGuard Inactive Enforcement', () => {
+  let guard: JwtAuthGuard;
+  let mockJwtService: any;
+  let mockUsersRepo: any;
+  let mockDistributorsRepo: any;
+
+  beforeEach(() => {
+    mockJwtService = {
+      verify: vi.fn(),
+    };
+    mockUsersRepo = {
+      findOne: vi.fn(),
+    };
+    mockDistributorsRepo = {
+      findOne: vi.fn(),
+    };
+    guard = new JwtAuthGuard(mockJwtService, mockUsersRepo, mockDistributorsRepo);
+  });
+
+  it('rejects with 401 when user is inactive', async () => {
+    mockJwtService.verify.mockReturnValue({
+      sub: 'u-1',
+      did: 'd-1',
+      role: 'distributor',
+      email: 'user@dairy.com',
+    });
+    mockUsersRepo.findOne.mockResolvedValue({
+      uid: 'u-1',
+      isActive: false,
+    });
+
+    const mockContext = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers: { authorization: 'Bearer mock-token' },
+        }),
+      }),
+    } as any;
+
+    await expect(guard.canActivate(mockContext)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rejects with 401 when distributor is inactive', async () => {
+    mockJwtService.verify.mockReturnValue({
+      sub: 'u-1',
+      did: 'd-1',
+      role: 'distributor',
+      email: 'user@dairy.com',
+    });
+    mockUsersRepo.findOne.mockResolvedValue({
+      uid: 'u-1',
+      isActive: true,
+      role: 'distributor',
+    });
+    mockDistributorsRepo.findOne.mockResolvedValue({
+      did: 'd-1',
+      isActive: false,
+    });
+
+    const mockContext = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers: { authorization: 'Bearer mock-token' },
+        }),
+      }),
+    } as any;
+
+    await expect(guard.canActivate(mockContext)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('allows access when user and distributor are both active', async () => {
+    mockJwtService.verify.mockReturnValue({
+      sub: 'u-1',
+      did: 'd-1',
+      role: 'distributor',
+      email: 'user@dairy.com',
+    });
+    mockUsersRepo.findOne.mockResolvedValue({
+      uid: 'u-1',
+      isActive: true,
+      role: 'distributor',
+    });
+    mockDistributorsRepo.findOne.mockResolvedValue({
+      did: 'd-1',
+      isActive: true,
+    });
+
+    const mockContext = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers: { authorization: 'Bearer mock-token' },
+        }),
+      }),
+    } as any;
+
+    const result = await guard.canActivate(mockContext);
+    expect(result).toBe(true);
   });
 });

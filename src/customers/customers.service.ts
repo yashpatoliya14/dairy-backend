@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { EntityRepository } from '@mikro-orm/postgresql';
 import { Customer, NotificationChannel } from '../entities/customer.entity.js';
@@ -534,11 +538,22 @@ export class CustomersService {
   }
 
   private async distributorFor(userId: string) {
+    const user = await this.userFor(userId);
+    if (user.isActive === false) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Please contact support.',
+      );
+    }
     const distributor = await this.distributors.findOne({
-      user: await this.userFor(userId),
+      user,
     });
     if (!distributor) {
       throw new NotFoundException('Distributor account not found');
+    }
+    if (distributor.isActive === false) {
+      throw new UnauthorizedException(
+        'Your distributor account has been deactivated. Please contact support.',
+      );
     }
     return distributor;
   }
