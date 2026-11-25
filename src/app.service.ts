@@ -30,28 +30,27 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.28',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.29',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 30,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 31,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.28',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.29',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.28 Update Available! 🚀',
+        'DairyDesk v1.0.29 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Direct balance tags (Due, Advance, Settled) on customer list & profile overview\n' +
-          '• Full billing settlement with automatic advance credit and past overdue calculation\n' +
-          '• Dual Meta-approved WhatsApp daily (9 params) & monthly (11 params) templates\n' +
-          '• Distinct release file: DairyDesk_v1.0.28_Update.apk',
+        '• Loading indicators on Bill and Customer Detail pages\\n' +
+          '• Faster data display with pre-loaded balance summaries\\n' +
+          '• Distinct release file: DairyDesk_v1.0.29_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.28/DairyDesk_v1.0.28_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.29/DairyDesk_v1.0.29_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.3 MB',
       publishedAt: new Date().toISOString(),
     };
