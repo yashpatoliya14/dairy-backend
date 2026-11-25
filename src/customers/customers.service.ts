@@ -754,12 +754,87 @@ export class CustomersService {
     year: number,
     month: number,
   ) {
-    const bills = await this.getMonthlyBillsSummary(userId, year, month);
-    const item = bills.find((b) => b.customerId === customerId);
-    if (!item) {
-      throw new NotFoundException('Customer bill summary not found');
-    }
-    return item;
+    const customer = await this.customerFor(userId, customerId);
+    const daysInTargetMonth = new Date(year, month, 0).getDate();
+    const targetMonthEnd = new Date(
+      Date.UTC(year, month - 1, daysInTargetMonth, 23, 59, 59, 999),
+    );
+
+    // Fast targeted query for this single customer instead of loading the entire dairy table
+    const [entriesList, paymentsList] = await Promise.all([
+      this.entries.find({
+        customer,
+        entryDate: { $lte: targetMonthEnd },
+      }),
+      this.payments
+        .find({
+          customer,
+          $or: [
+            { year: { $lt: year } },
+            { year, month: { $lte: month } },
+          ],
+        })
+        .catch(() => []),
+    ]);
+
+    const cEntries = (entriesList || []).map((e) => ({
+      entryDate: e.entryDate,
+      liters: Number(e.liters ?? 0),
+      price: Number(e.price ?? 0),
+      total: e.total != null ? Number(e.total) : undefined,
+    }));
+
+    const cPayments = (paymentsList || []).map((p) => ({
+      year: p.year,
+      month: p.month,
+      receivedAmount: Number(p.receivedAmount ?? 0),
+      note: p.note ?? '',
+      receivedDate: p.receivedDate,
+    }));
+
+    const defaultPrice = Number(customer.price ?? 0);
+    const ledger = calculateCustomerLedger({
+      entries: cEntries,
+      payments: cPayments,
+      targetYear: year,
+      targetMonth: month,
+      defaultPrice,
+    });
+
+    return {
+      customerId: customer.cid,
+      name: customer.name,
+      phone: customer.phoneNumber ?? '',
+      number: String(customer.uniqueNumber ?? '0'),
+      defaultPrice,
+      defaultLiters: Number(customer.liters ?? 1.0),
+      thisMonthLiters: ledger.totalQuantity,
+      thisMonthBill: ledger.thisMonthBill,
+      thisMonthPaid: ledger.thisMonthPaid,
+      thisMonthDue: ledger.thisMonthDue,
+      activeDays: ledger.activeDays,
+      daysInMonth: daysInTargetMonth,
+      grossPastDue: ledger.grossPastDue,
+      grossPastAdvance: ledger.grossPastAdvance,
+      pastMonthsDue: ledger.pastMonthsDue,
+      pastMonthsAdvance: ledger.pastMonthsAdvance,
+      pastMonthsBreakdown: ledger.pastMonthsBreakdown,
+      netBalanceDue: ledger.netBalanceDue,
+      netAdvance: ledger.netAdvance,
+      advanceApplied: ledger.advanceApplied,
+      payableBeforeAdvance: ledger.payableBeforeAdvance,
+      paymentNote: ledger.paymentNote,
+      paymentDate: ledger.paymentDate,
+      hasPayment: ledger.hasPayment,
+      customer: {
+        id: customer.cid,
+        name: customer.name,
+        phoneNumber: customer.phoneNumber ?? '',
+        uniqueNumber: String(customer.uniqueNumber ?? '0'),
+        price: defaultPrice,
+        liters: Number(customer.liters ?? 1.0),
+      },
+    };
   }
 
   private extractCustomerId(customer: any): string {

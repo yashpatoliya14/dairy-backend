@@ -280,6 +280,7 @@ describe('CustomersService - Milk Entries & Card', () => {
     mockUsersRepo.findOne.mockResolvedValue(fakeUser);
     mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
     mockCustomersRepo.find.mockResolvedValue([fakeCustomer]);
+    mockCustomersRepo.findOne.mockResolvedValue(fakeCustomer);
     mockEntriesRepo.find.mockResolvedValue([
       {
         customer: fakeCustomer,

@@ -54,6 +54,9 @@ export async function runMigration() {
     CREATE INDEX IF NOT EXISTS idx_payment_entries_dist_year_month ON public.payment_entries (did, year, month);
     CREATE INDEX IF NOT EXISTS idx_payment_entries_cust_year_month ON public.payment_entries (cid, year, month);
 
+    CREATE INDEX IF NOT EXISTS idx_milk_entries_dist_entry_date ON public.milk_entries (did, entry_date);
+    CREATE INDEX IF NOT EXISTS idx_milk_entries_cust_entry_date ON public.milk_entries (cid, entry_date);
+
     ALTER TABLE public.distributors ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
     ALTER TABLE public.distributors ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP;
     ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;

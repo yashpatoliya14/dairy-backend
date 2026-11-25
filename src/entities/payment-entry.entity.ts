@@ -1,5 +1,6 @@
 import {
   Entity,
+  Index,
   ManyToOne,
   PrimaryKey,
   Property,
@@ -11,6 +12,8 @@ import { User } from './user.entity.js';
 
 @Entity({ tableName: 'payment_entries' })
 @Unique({ properties: ['customer', 'year', 'month'] })
+@Index({ properties: ['distributor', 'year', 'month'] })
+@Index({ properties: ['customer', 'year', 'month'] })
 export class PaymentEntry {
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   pid!: string;
