@@ -383,17 +383,15 @@ export class WhatsAppService {
     const advanceCredit = Number(dto.advanceCredit ?? 0);
     const paidAmount = Number(dto.paidAmount ?? 0);
     const monthToDateBill = Number(dto.monthToDateBill ?? amount);
-    const currentMonthDue = isMonthly && paidAmount > 0
-      ? Math.max(0, amount - paidAmount)
-      : amount;
-    const excessPaid = isMonthly && paidAmount > amount ? paidAmount - amount : 0;
-    const effectiveCredit = advanceCredit + excessPaid;
-    const remainingPastDue = previousDue > effectiveCredit ? previousDue - effectiveCredit : 0;
-    const defaultMonthlyPayable = Number((currentMonthDue + remainingPastDue).toFixed(2));
+
+    // Exact financial settlement: (current month bill + past overdue) - (advance credit + payment received)
+    const grossPayable = roundToCurrency(amount + previousDue);
+    const totalCredits = roundToCurrency(advanceCredit + paidAmount);
+    const defaultMonthlyPayable = roundToCurrency(Math.max(0, grossPayable - totalCredits));
 
     const totalPayable = isMonthly
       ? Number(dto.netPayable ?? defaultMonthlyPayable)
-      : Number(monthToDateBill + previousDue);
+      : roundToCurrency(monthToDateBill + previousDue);
 
     const dateOrMonth =
       (isMonthly ? dto.monthName : dto.date) ??
@@ -423,10 +421,9 @@ export class WhatsAppService {
         `• Rate per Liter: ₹${rate.toFixed(2)}/L\n\n` +
         `💰 *BILL BREAKDOWN:*\n` +
         `• Monthly Milk Bill: ₹${amount.toFixed(2)}\n` +
-        (paidAmount > 0 ? `• Amount Received: ₹${paidAmount.toFixed(2)}\n` : '') +
-        (paidAmount > 0 && currentMonthDue > 0 ? `• Current Month Balance: ₹${currentMonthDue.toFixed(2)}\n` : '') +
-        `• Past Overdue: ₹${previousDue.toFixed(2)}\n` +
-        `• Advance / Credits: ₹${advanceCredit.toFixed(2)}\n` +
+        (previousDue > 0 ? `• Past Overdue: +₹${previousDue.toFixed(2)}\n` : '') +
+        (advanceCredit > 0 ? `• Advance Credit: -₹${advanceCredit.toFixed(2)}\n` : '') +
+        (paidAmount > 0 ? `• Amount Received: -₹${paidAmount.toFixed(2)}\n` : '') +
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `⭐ *NET TOTAL PAYABLE: ₹${totalPayable.toFixed(2)}${totalPayable === 0 ? ' (Fully Settled)' : ''}*\n` +
         `━━━━━━━━━━━━━━━━━━━━\n\n` +
@@ -490,7 +487,19 @@ export class WhatsAppService {
           distributorName,
           distributorPhone,
         });
+      } else if (templateName === 'dairy_milk_bill_update') {
+        // Meta approved 7-parameter legacy template: {{1}} Customer, {{2}} Month/Date, {{3}} Quantity, {{4}} Rate, {{5}} Due, {{6}} Distributor, {{7}} Phone
+        bodyParameters = [
+          dto.customerName,
+          dto.monthName ?? dateOrMonth,
+          `${liters.toFixed(1)} L`,
+          rate.toFixed(2),
+          totalPayable.toFixed(2),
+          distributorName,
+          distributorPhone,
+        ];
       } else {
+        // Meta approved 11-parameter 'monthly_milk_bill_settlement' template
         bodyParameters = [
           dto.customerName,
           dto.monthName ?? dateOrMonth,

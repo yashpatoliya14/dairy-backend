@@ -158,6 +158,90 @@ describe('WhatsAppService.sendBillMessage', () => {
     expect(result.formattedMessage).toContain('NET TOTAL PAYABLE: ₹1900.00');
   });
 
+  it('correctly applies previous month advance credit to monthly bill', async () => {
+    requests.length = 0;
+    const result = await service.sendBillMessage({
+      to: '919876543210',
+      customerName: 'Haresh Sambad',
+      type: 'monthly',
+      totalLiters: 25,
+      ratePerLiter: 60,
+      monthName: 'November 2026',
+      monthlyAmount: 1500,
+      totalAmount: 1500,
+      previousDue: 0,
+      advanceCredit: 300,
+      totalDays: 30,
+    });
+
+    expect(result.status).toBe('SubmittedToProvider');
+    expect(requests[0].body).toMatchObject({
+      type: 'template',
+      template: {
+        name: 'monthly_milk_bill_settlement',
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: 'Haresh Sambad' },
+              { type: 'text', text: 'November 2026' },
+              { type: 'text', text: '30 Days' },
+              { type: 'text', text: '25.0 L' },
+              { type: 'text', text: '60.00' },
+              { type: 'text', text: '1500.00' },
+              { type: 'text', text: '0.00' },
+              { type: 'text', text: '300.00' },
+              { type: 'text', text: '1200.00' },
+              { type: 'text', text: 'Dairy Owner' },
+              { type: 'text', text: '+91 9104152524' },
+            ],
+          },
+        ],
+      },
+    });
+    expect(result.formattedMessage).toContain('Advance Credit: -₹300.00');
+    expect(result.formattedMessage).toContain('NET TOTAL PAYABLE: ₹1200.00');
+  });
+
+  it('binds exact 7 parameters when legacy dairy_milk_bill_update template is requested', async () => {
+    requests.length = 0;
+    const result = await service.sendBillMessage({
+      to: '919876543210',
+      customerName: 'Legacy Customer',
+      type: 'monthly',
+      templateName: 'dairy_milk_bill_update',
+      totalLiters: 30,
+      ratePerLiter: 60,
+      monthName: 'November 2026',
+      monthlyAmount: 1800,
+      totalAmount: 1800,
+      previousDue: 0,
+      advanceCredit: 0,
+    });
+
+    expect(result.status).toBe('SubmittedToProvider');
+    expect(requests[0].body).toMatchObject({
+      type: 'template',
+      template: {
+        name: 'dairy_milk_bill_update',
+        components: [
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: 'Legacy Customer' },
+              { type: 'text', text: 'November 2026' },
+              { type: 'text', text: '30.0 L' },
+              { type: 'text', text: '60.00' },
+              { type: 'text', text: '1800.00' },
+              { type: 'text', text: 'Dairy Owner' },
+              { type: 'text', text: '+91 9104152524' },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it('skips customers with missing or invalid phone numbers in sendBulkDailyEntries', async () => {
     const mockUser = { uid: 'user-1' };
     const mockDistributor = { id: 'dist-1', user: mockUser, dairyName: 'Test Dairy' };

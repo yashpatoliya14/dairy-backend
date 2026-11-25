@@ -286,11 +286,91 @@ export class CustomersService {
 
     const todayMap = new Map(todayEntries.map((e) => [e.cid, e]));
 
+    // Compute live customer balance summaries (net balance due, advance, and status tags)
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
+    const daysInCurMonth = new Date(curYear, curMonth, 0).getDate();
+    const curMonthEnd = new Date(Date.UTC(curYear, curMonth - 1, daysInCurMonth, 23, 59, 59, 999));
+
+    const [allEntries, allPayments] = await Promise.all([
+      Promise.resolve(
+        this.entries?.find
+          ? this.entries.find(
+              { distributor, entryDate: { $lte: curMonthEnd } },
+              { populate: ['customer'] },
+            )
+          : [],
+      ).catch(() => []),
+      Promise.resolve(
+        this.payments?.find
+          ? this.payments.find(
+              {
+                distributor,
+                $or: [
+                  { year: { $lt: curYear } },
+                  { year: curYear, month: { $lte: curMonth } },
+                ],
+              },
+              { populate: ['customer'] },
+            )
+          : [],
+      ).catch(() => []),
+    ]);
+
+    const entriesList = Array.isArray(allEntries) ? allEntries : [];
+    const paymentsList = Array.isArray(allPayments) ? allPayments : [];
+
+    const entriesMap = new Map<string, Array<{ entryDate: Date | string; liters: number; price: number; total?: number }>>();
+    for (const e of entriesList) {
+      const cid = this.extractCustomerId(e.customer);
+      if (!entriesMap.has(cid)) entriesMap.set(cid, []);
+      entriesMap.get(cid)!.push({
+        entryDate: e.entryDate,
+        liters: Number(e.liters ?? 0),
+        price: Number(e.price ?? 0),
+        total: e.total != null ? Number(e.total) : undefined,
+      });
+    }
+
+    const paymentsMap = new Map<string, Array<{ year: number; month: number; receivedAmount: number; note?: string; receivedDate?: Date | string | null }>>();
+    for (const p of paymentsList) {
+      const cid = this.extractCustomerId(p.customer);
+      if (!paymentsMap.has(cid)) paymentsMap.set(cid, []);
+      paymentsMap.get(cid)!.push({
+        year: p.year,
+        month: p.month,
+        receivedAmount: Number(p.receivedAmount ?? 0),
+        note: p.note ?? '',
+        receivedDate: p.receivedDate,
+      });
+    }
+
     return customers.map((customer) => {
       const today = todayMap.get(customer.cid);
       const todayLiters = today != null ? Number(today.liters) : null;
       const todayPrice = today != null ? Number(today.price) : null;
       const todayTotal = today != null ? Number(today.total) : null;
+
+      const defaultPrice = Number(customer.price ?? 0);
+      const cEntries = entriesMap.get(customer.cid) ?? [];
+      const cPayments = paymentsMap.get(customer.cid) ?? [];
+
+      const ledger = calculateCustomerLedger({
+        entries: cEntries,
+        payments: cPayments,
+        targetYear: curYear,
+        targetMonth: curMonth,
+        defaultPrice,
+      });
+
+      const balanceStatus =
+        ledger.netBalanceDue > 0
+          ? 'due'
+          : ledger.netAdvance > 0
+            ? 'advance'
+            : 'settled';
+
       return {
         id: customer.cid,
         name: customer.name,
@@ -305,6 +385,17 @@ export class CustomersService {
         price: todayPrice != null ? todayPrice : Number(customer.price),
         phoneNumber: customer.phoneNumber,
         notificationChannel: customer.notificationChannel,
+        netBalanceDue: ledger.netBalanceDue,
+        netAdvance: ledger.netAdvance,
+        balanceStatus,
+        thisMonthBill: ledger.thisMonthBill,
+        thisMonthPaid: ledger.thisMonthPaid,
+        thisMonthDue: ledger.thisMonthDue,
+        pastMonthsDue: ledger.pastMonthsDue,
+        grossPastDue: ledger.grossPastDue,
+        grossPastAdvance: ledger.grossPastAdvance,
+        advanceApplied: ledger.advanceApplied,
+        payableBeforeAdvance: ledger.payableBeforeAdvance,
       };
     });
   }
@@ -577,8 +668,11 @@ export class CustomersService {
         .catch(() => []),
     ]);
 
+    const entriesList = Array.isArray(allEntries) ? allEntries : [];
+    const paymentsList = Array.isArray(allPayments) ? allPayments : [];
+
     const entriesMap = new Map<string, Array<{ entryDate: Date | string; liters: number; price: number; total?: number }>>();
-    for (const e of allEntries) {
+    for (const e of entriesList) {
       const cid = this.extractCustomerId(e.customer);
       if (!entriesMap.has(cid)) entriesMap.set(cid, []);
       entriesMap.get(cid)!.push({
@@ -590,7 +684,7 @@ export class CustomersService {
     }
 
     const paymentsMap = new Map<string, Array<{ year: number; month: number; receivedAmount: number; note?: string; receivedDate?: Date | string | null }>>();
-    for (const p of allPayments) {
+    for (const p of paymentsList) {
       const cid = this.extractCustomerId(p.customer);
       if (!paymentsMap.has(cid)) paymentsMap.set(cid, []);
       paymentsMap.get(cid)!.push({
@@ -635,6 +729,8 @@ export class CustomersService {
         pastMonthsBreakdown: ledger.pastMonthsBreakdown,
         netBalanceDue: ledger.netBalanceDue,
         netAdvance: ledger.netAdvance,
+        advanceApplied: ledger.advanceApplied,
+        payableBeforeAdvance: ledger.payableBeforeAdvance,
         paymentNote: ledger.paymentNote,
         paymentDate: ledger.paymentDate,
         hasPayment: ledger.hasPayment,
