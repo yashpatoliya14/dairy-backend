@@ -298,7 +298,6 @@ export class CustomersService {
         this.entries?.find
           ? this.entries.find(
               { distributor, entryDate: { $lte: curMonthEnd } },
-              { populate: ['customer'] },
             )
           : [],
       ).catch(() => []),
@@ -312,7 +311,6 @@ export class CustomersService {
                   { year: curYear, month: { $lte: curMonth } },
                 ],
               },
-              { populate: ['customer'] },
             )
           : [],
       ).catch(() => []),

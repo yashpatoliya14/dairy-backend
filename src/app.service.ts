@@ -30,29 +30,30 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.31',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.32',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 33,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 34,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.31',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.32',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.31 Update Available! 🚀',
+        'DairyDesk v1.0.32 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Responsive DairyMilkLoader indicator when switching months\\n' +
-          '• High-performance single-customer ledger and bill queries (<10ms)\\n' +
-          '• Concurrent network fetch for entries, payment, and bill summary\\n' +
-          '• Database indexing for lightning-fast monthly billing and milk entries\\n' +
-          '• Distinct release file: DairyDesk_v1.0.31_Update.apk',
+        '• Pull-down swipe to refresh on Customer Details screen\\n' +
+          '• Automatic reload when navigating to Messages tab\\n' +
+          '• Live milk entry listeners for background message list synchronization\\n' +
+          '• Instant opening for Add Customer Quick Action\\n' +
+          '• Clean, shortened Payment Entry sheet (removed Payment Mode chips)\\n' +
+          '• Distinct release file: DairyDesk_v1.0.32_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.31/DairyDesk_v1.0.31_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.32/DairyDesk_v1.0.32_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.3 MB',
       publishedAt: new Date().toISOString(),
     };
