@@ -30,27 +30,28 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.29',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.30',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 31,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 32,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.29',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.30',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.29 Update Available! 🚀',
+        'DairyDesk v1.0.30 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Loading indicators on Bill and Customer Detail pages\\n' +
-          '• Faster data display with pre-loaded balance summaries\\n' +
-          '• Distinct release file: DairyDesk_v1.0.29_Update.apk',
+        '• Formatted WhatsApp daily and monthly bill sheet with exact customer balance attachment\\n' +
+          '• Removed Shift/Evening section for clean delivery date recording\\n' +
+          '• Accurate Month-to-date and Past Overdue balance calculations\\n' +
+          '• Distinct release file: DairyDesk_v1.0.30_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.29/DairyDesk_v1.0.29_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.30/DairyDesk_v1.0.30_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.3 MB',
       publishedAt: new Date().toISOString(),
     };
