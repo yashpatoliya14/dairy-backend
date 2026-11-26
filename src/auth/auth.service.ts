@@ -47,6 +47,15 @@ export class AuthService {
     return this.mailService.getDiagnostics();
   }
 
+  async testBrevoEmail(email: string) {
+    const clean = (email ?? '').trim().toLowerCase();
+    if (!isValidEmail(clean)) {
+      throw new BadRequestException('Please enter a valid email address');
+    }
+    await this.mailService.sendCode(clean, '888999', 'verify');
+    return { success: true, message: `Verification test email sent to ${clean} via Brevo` };
+  }
+
   async signup(dto: SignupDto) {
     const rawEmail = dto.email?.trim() ?? '';
     const email = rawEmail.toLowerCase();
@@ -62,7 +71,37 @@ export class AuthService {
           'This distributor account has been deactivated and cannot be reopened. Please contact support.',
         );
       }
-      throw new ConflictException('Email is already registered');
+      if (existingEmailUser.emailVerified) {
+        throw new ConflictException('Email is already registered');
+      }
+
+      // If user exists but is not yet verified, update credentials & send fresh OTP
+      existingEmailUser.passwordHash = await bcrypt.hash(dto.password, 12);
+      existingEmailUser.firstName = dto.firstName.trim();
+      existingEmailUser.lastName = dto.lastName.trim();
+      existingEmailUser.name = `${dto.firstName.trim()} ${dto.lastName.trim()}`;
+      existingEmailUser.phoneNumber = normalizedPhone;
+      if (dist) {
+        dist.dairyName = dto.dairyName.trim();
+      }
+      const code = this.createCode();
+      existingEmailUser.verificationCodeHash = this.hashCode(code);
+      existingEmailUser.verificationExpiresAt = this.expiresAt();
+      await this.users.getEntityManager().flush();
+
+      this.mailService
+        .sendCode(email, code, 'verify')
+        .catch((err: any) =>
+          this.logger.error(
+            `Async email dispatch failed for signup (${email}): ${err?.message || err}`,
+          ),
+        );
+
+      return {
+        message: 'Verification code sent to your email address',
+        email: existingEmailUser.email,
+        needsVerification: true,
+      };
     }
 
     let normalizedPhone: string | undefined = undefined;
@@ -106,7 +145,7 @@ export class AuthService {
       lastName: dto.lastName.trim(),
       name: `${dto.firstName.trim()} ${dto.lastName.trim()}`,
       phoneNumber: normalizedPhone,
-      emailVerified: true,
+      emailVerified: false,
       role: UserRole.DISTRIBUTOR,
       isActive: true,
     });
@@ -117,11 +156,26 @@ export class AuthService {
       isActive: true,
     });
     const em = this.users.getEntityManager();
+    const code = this.createCode();
+    user.verificationCodeHash = this.hashCode(code);
+    user.verificationExpiresAt = this.expiresAt();
     em.persist([user, distributor]);
     await em.flush();
 
-    // Directly issue token so the user is auto-logged in upon account creation
-    return this.issueToken(user, distributor);
+    // Dispatch verification email via Brevo
+    this.mailService
+      .sendCode(email, code, 'verify')
+      .catch((err: any) =>
+        this.logger.error(
+          `Async email dispatch failed for signup (${email}): ${err?.message || err}`,
+        ),
+      );
+
+    return {
+      message: 'Verification code sent to your email address',
+      email: user.email,
+      needsVerification: true,
+    };
   }
 
   async login(dto: LoginDto) {

@@ -84,24 +84,37 @@ export class MailService {
     code: string,
     purpose: 'verify' | 'reset',
   ): Promise<void> {
-    const subject =
-      purpose === 'verify'
-        ? 'Verify your Dairy Desk email'
-        : 'Reset your Dairy Desk password';
-    const heading =
-      purpose === 'verify'
-        ? 'Verify your email address'
-        : 'Reset your password';
+    const isVerify = purpose === 'verify';
+    const subject = isVerify
+      ? `Dairy Desk - Verification Code: ${code}`
+      : `Dairy Desk - Password Reset Code: ${code}`;
+    const heading = isVerify
+      ? 'Verify your email address'
+      : 'Reset your password';
+    const guHeading = isVerify
+      ? 'તમારું ઇમેઇલ વેરિફાય કરો'
+      : 'પાસવર્ડ રીસેટ કરો';
 
-    const text = `${heading}\n\nYour Dairy Desk verification code is ${code}.\nIt expires in 15 minutes.`;
+    const text = `${heading} (${guHeading})\n\nYour Dairy Desk verification code is ${code}.\nThis code is valid for 15 minutes.\nDo not share this code with anyone.`;
     const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; rounded: 12px; background: #ffffff;">
-        <h2 style="color: #192342; font-size: 20px; font-weight: bold; margin-bottom: 8px;">${heading}</h2>
-        <p style="color: #475569; font-size: 14px; margin-bottom: 20px;">Use the verification code below to complete your request. This code will expire in 15 minutes.</p>
-        <div style="background-color: #f1f5f9; border-radius: 8px; padding: 16px; text-align: center; margin-bottom: 20px;">
-          <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #4768E8;">${code}</span>
+      <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h1 style="color: #166534; font-size: 24px; font-weight: 800; margin: 0;">Dairy Desk</h1>
+          <p style="color: #64748b; font-size: 13px; margin-top: 4px;">Smart Dairy Milk Management</p>
         </div>
-        <p style="color: #94a3b8; font-size: 12px; margin-bottom: 0;">If you did not request this code, you can safely ignore this email.</p>
+        <h2 style="color: #0f172a; font-size: 18px; font-weight: 700; margin-bottom: 4px;">${heading}</h2>
+        <p style="color: #166534; font-size: 14px; font-weight: 600; margin-bottom: 16px;">${guHeading}</p>
+        <p style="color: #475569; font-size: 14px; margin-bottom: 20px; line-height: 1.5;">
+          ${isVerify 
+            ? 'Use the verification code below to verify your email address and activate your Dairy Desk account. This code is valid for 15 minutes.' 
+            : 'We received a request to reset your password. Use the verification code below to proceed. This code is valid for 15 minutes.'}
+        </p>
+        <div style="background-color: #f0fdf4; border: 2px dashed #86efac; border-radius: 10px; padding: 18px; text-align: center; margin-bottom: 20px;">
+          <span style="font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #166534; font-family: monospace;">${code}</span>
+        </div>
+        <p style="color: #64748b; font-size: 12px; margin-bottom: 8px;">If you did not request this verification code, please ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+        <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 0;">Dairy Desk &copy; ${new Date().getFullYear()} &bull; Dairy Management System</p>
       </div>
     `.trim();
 
@@ -139,11 +152,11 @@ export class MailService {
     // Try 2: Brevo HTTP API (Port 443)
     if (this.brevoApiKey) {
       try {
-        await axios.post(
+        const response = await axios.post(
           'https://api.brevo.com/v3/smtp/email',
           {
             sender: {
-              email: this.brevoFrom || 'noreply@dairydesk.in',
+              email: this.brevoFrom || 'milk.agent.go@gmail.com',
               name: 'Dairy Desk',
             },
             to: [{ email }],
@@ -156,10 +169,10 @@ export class MailService {
               'api-key': this.brevoApiKey,
               'Content-Type': 'application/json',
             },
-            timeout: 5000,
+            timeout: 10000,
           },
         );
-        this.logger.log(`Sent ${purpose} email to ${email} via Brevo HTTP API`);
+        this.logger.log(`Sent ${purpose} email to ${email} via Brevo HTTP API (status: ${response.status})`);
         return;
       } catch (err: any) {
         this.logger.warn(`Brevo HTTP API failed: ${err?.response?.data?.message || err?.message}`);

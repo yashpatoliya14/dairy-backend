@@ -50,6 +50,11 @@ export class AuthController {
     return this.authService.getMailDiagnostics();
   }
 
+  @Post('test-brevo-email')
+  testBrevoEmail(@Body('email') email: string) {
+    return this.authService.testBrevoEmail(email);
+  }
+
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);

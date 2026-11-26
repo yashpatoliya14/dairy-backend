@@ -30,28 +30,28 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.37',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.38',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 39,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 40,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.37',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.38',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.37 Update Available! 🚀',
+        'DairyDesk v1.0.38 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Dual-mode milk entry dialog (+ Add with last entry & Replace entry) active on all days in Bill & Entries\n' +
-          '• Daily message highlight shows Today\'s Total Amount (₹) while sending complete account bill\n' +
-          '• Auto-redirect to Dashboard upon signup & 10-digit mobile number validation\n' +
-          '• Distinct release file: DairyDesk_v1.0.37_Update.apk',
+        '• Brevo Email OTP Verification on Signup (Prevents fake/unverified accounts)\n' +
+          '• Direct auto-redirect straight to Dashboard upon entering 6-digit OTP\n' +
+          '• Resend OTP with countdown timer & branded email delivery\n' +
+          '• Distinct release file: DairyDesk_v1.0.38_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.37/DairyDesk_v1.0.37_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.38/DairyDesk_v1.0.38_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.3 MB',
       publishedAt: new Date().toISOString(),
     };
