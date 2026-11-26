@@ -106,7 +106,7 @@ export class AuthService {
       lastName: dto.lastName.trim(),
       name: `${dto.firstName.trim()} ${dto.lastName.trim()}`,
       phoneNumber: normalizedPhone,
-      emailVerified: false,
+      emailVerified: true,
       role: UserRole.DISTRIBUTOR,
       isActive: true,
     });
@@ -117,20 +117,11 @@ export class AuthService {
       isActive: true,
     });
     const em = this.users.getEntityManager();
-    const code = this.createCode();
-    user.verificationCodeHash = this.hashCode(code);
-    user.verificationExpiresAt = this.expiresAt();
     em.persist([user, distributor]);
     await em.flush();
-    // Asynchronous fire-and-forget OTP email dispatch so HTTP returns immediately
-    this.mailService
-      .sendCode(email, code, 'verify')
-      .catch((err: any) =>
-        this.logger.error(
-          `Async email dispatch failed for signup (${email}): ${err?.message || err}`,
-        ),
-      );
-    return { message: 'Verification code sent to your email' };
+
+    // Directly issue token so the user is auto-logged in upon account creation
+    return this.issueToken(user, distributor);
   }
 
   async login(dto: LoginDto) {
@@ -534,8 +525,10 @@ export class AuthService {
       email: user.email,
       role: user.role,
     };
+    const signedToken = this.jwtService.sign(payload);
     return {
-      accessToken: this.jwtService.sign(payload),
+      accessToken: signedToken,
+      access_token: signedToken,
       expiresIn: 2592000,
       user: {
         id: user.uid,

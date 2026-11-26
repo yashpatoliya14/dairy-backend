@@ -62,6 +62,18 @@ describe('Customer Phone Number Validation', () => {
       expect(isValidCustomerPhone('123456789')).toBe(false);
     });
 
+    it('strictly rejects 11-digit national numbers and invalid Indian phone numbers', () => {
+      // 11 digits without + (accidental 11th digit typed)
+      expect(isValidCustomerPhone('70433333359')).toBe(false);
+      expect(isValidCustomerPhone('98765432101')).toBe(false);
+      // +91 followed by 11 digits (13 digits total)
+      expect(isValidCustomerPhone('+9170433333359')).toBe(false);
+      expect(isValidCustomerPhone('+91 70433 333359')).toBe(false);
+      // Indian mobile numbers starting with < 6
+      expect(isValidCustomerPhone('+911234567890')).toBe(false);
+      expect(isValidCustomerPhone('+915234567890')).toBe(false);
+    });
+
     it('strictly rejects numbers with more than 15 digits', () => {
       expect(isValidCustomerPhone('1234567890123456')).toBe(false);
       expect(isValidCustomerPhone('+91987654321099999')).toBe(false);

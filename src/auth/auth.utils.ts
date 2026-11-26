@@ -42,11 +42,19 @@ export function isPhoneNumber(input: string): boolean {
   const clean = input.trim();
   if (clean.includes('@')) return false;
   const digitsOnly = clean.replace(/\D/g, '');
-  return (
-    digitsOnly.length >= 10 &&
-    digitsOnly.length <= 15 &&
-    /^[+]?[0-9\s\-()]+$/.test(clean)
-  );
+  if (digitsOnly.length < 10 || digitsOnly.length > 15) return false;
+  if (!/^[+]?[0-9\s\-()]+$/.test(clean)) return false;
+
+  // Indian phone validation
+  if (clean.startsWith('+91') || (clean.startsWith('91') && digitsOnly.length >= 12)) {
+    const after91 = digitsOnly.startsWith('91') ? digitsOnly.substring(2) : digitsOnly;
+    return after91.length === 10 && /^[6-9]\d{9}$/.test(after91);
+  }
+  // Reject Indian numbers entered with 11 digits starting with 6-9
+  if (!clean.startsWith('+') && digitsOnly.length === 11 && /^[6-9]/.test(digitsOnly)) {
+    return false;
+  }
+  return true;
 }
 
 export function normalizePhone(input: string): string {
