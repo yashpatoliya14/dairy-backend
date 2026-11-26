@@ -30,28 +30,27 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.35',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.36',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 37,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 38,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.35',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.36',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.35 Update Available! 🚀',
+        'DairyDesk v1.0.36 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Restored clean, direct milk entry and edit form\n' +
-          '• Instant quantity and price modification for single and multi-entry records\n' +
-          '• Fixed 10-digit mobile number validation and restricted extra digits\n' +
-          '• Distinct release file: DairyDesk_v1.0.35_Update.apk',
+        '• Restored dual-mode milk entry dialog (+ Add with last entry & Replace entry)\n' +
+          '• Clean layout with mode switcher and real-time total preview\n' +
+          '• Distinct release file: DairyDesk_v1.0.36_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.35/DairyDesk_v1.0.35_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.36/DairyDesk_v1.0.36_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '60.3 MB',
       publishedAt: new Date().toISOString(),
     };

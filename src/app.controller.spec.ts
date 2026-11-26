@@ -19,15 +19,15 @@ describe('AppController', () => {
 
   describe('version check', () => {
     it('detects update available when client version is older than latest', () => {
-      const res = appController.getAppVersion('1.0.34', '36');
+      const res = appController.getAppVersion('1.0.35', '37');
       expect(res.isUpdateAvailable).toBe(true);
       expect(res.mustForceUpdate).toBe(true);
-      expect(res.latestVersion).toBe('1.0.35');
-      expect(res.downloadUrl).toContain('DairyDesk_v1.0.35_Update.apk');
+      expect(res.latestVersion).toBe('1.0.36');
+      expect(res.downloadUrl).toContain('DairyDesk_v1.0.36_Update.apk');
     });
 
     it('returns isUpdateAvailable false when client is on latest version', () => {
-      const res = appController.getAppVersion('1.0.35', '37');
+      const res = appController.getAppVersion('1.0.36', '38');
       expect(res.isUpdateAvailable).toBe(false);
       expect(res.mustForceUpdate).toBe(false);
     });
