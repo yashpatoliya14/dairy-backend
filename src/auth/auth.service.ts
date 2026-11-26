@@ -63,6 +63,31 @@ export class AuthService {
       throw new BadRequestException('Please enter a valid email address');
     }
 
+    let normalizedPhone: string | undefined = undefined;
+    if (dto.phoneNumber) {
+      const rawPhone = dto.phoneNumber.trim();
+      if (!isPhoneNumber(rawPhone)) {
+        throw new BadRequestException(
+          'Please enter a valid 10-15 digit mobile number',
+        );
+      }
+      normalizedPhone = normalizePhone(rawPhone);
+      const existingPhoneUser = await this.users.findOne({
+        phoneNumber: { $in: getPhoneSearchVariants(rawPhone) },
+      });
+      if (existingPhoneUser) {
+        const dist = await this.distributors.findOne({ user: existingPhoneUser });
+        if ((dist && !dist.isActive) || existingPhoneUser.isActive === false) {
+          throw new ForbiddenException(
+            'This distributor account has been deactivated and cannot be reopened. Please contact support.',
+          );
+        }
+        if (existingPhoneUser.email !== email) {
+          throw new ConflictException('Mobile number is already registered');
+        }
+      }
+    }
+
     const existingEmailUser = await this.users.findOne({ email });
     if (existingEmailUser) {
       const dist = await this.distributors.findOne({ user: existingEmailUser });
@@ -80,7 +105,9 @@ export class AuthService {
       existingEmailUser.firstName = dto.firstName.trim();
       existingEmailUser.lastName = dto.lastName.trim();
       existingEmailUser.name = `${dto.firstName.trim()} ${dto.lastName.trim()}`;
-      existingEmailUser.phoneNumber = normalizedPhone;
+      if (normalizedPhone) {
+        existingEmailUser.phoneNumber = normalizedPhone;
+      }
       if (dist) {
         dist.dairyName = dto.dairyName.trim();
       }
@@ -102,29 +129,6 @@ export class AuthService {
         email: existingEmailUser.email,
         needsVerification: true,
       };
-    }
-
-    let normalizedPhone: string | undefined = undefined;
-    if (dto.phoneNumber) {
-      const rawPhone = dto.phoneNumber.trim();
-      if (!isPhoneNumber(rawPhone)) {
-        throw new BadRequestException(
-          'Please enter a valid 10-15 digit mobile number',
-        );
-      }
-      normalizedPhone = normalizePhone(rawPhone);
-      const existingPhoneUser = await this.users.findOne({
-        phoneNumber: { $in: getPhoneSearchVariants(rawPhone) },
-      });
-      if (existingPhoneUser) {
-        const dist = await this.distributors.findOne({ user: existingPhoneUser });
-        if ((dist && !dist.isActive) || existingPhoneUser.isActive === false) {
-          throw new ForbiddenException(
-            'This distributor account has been deactivated and cannot be reopened. Please contact support.',
-          );
-        }
-        throw new ConflictException('Mobile number is already registered');
-      }
     }
 
     const inactiveDist = await this.distributors.findOne({
