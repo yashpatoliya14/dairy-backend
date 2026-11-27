@@ -41,6 +41,12 @@ describe('SendBillMessageRequest', () => {
 describe('WhatsAppService.sendBillMessage', () => {
   const requests: Array<{ url?: string; body: Record<string, unknown> }> = [];
   let service: WhatsAppService;
+  const mockRepo = {
+    findOne: vi.fn(),
+    find: vi.fn(),
+    persistAndFlush: vi.fn(),
+    flush: vi.fn(),
+  } as any;
 
   beforeEach(() => {
     requests.length = 0;
@@ -67,7 +73,14 @@ describe('WhatsAppService.sendBillMessage', () => {
 
     const client = axios.create({ adapter });
     vi.spyOn(axios, 'create').mockReturnValue(client);
-    service = new WhatsAppService(config);
+    service = new WhatsAppService(
+      config,
+      mockRepo,
+      mockRepo,
+      mockRepo,
+      mockRepo,
+      mockRepo,
+    );
   });
 
   afterEach(() => {
@@ -342,7 +355,14 @@ describe('WhatsAppService.sendBillMessage', () => {
   it('throws ServiceUnavailableException when WhatsApp config is missing', async () => {
     const emptyConfig = new ConfigService();
     vi.spyOn(emptyConfig, 'get').mockReturnValue(undefined);
-    const unconfiguredService = new WhatsAppService(emptyConfig);
+    const unconfiguredService = new WhatsAppService(
+      emptyConfig,
+      mockRepo,
+      mockRepo,
+      mockRepo,
+      mockRepo,
+      mockRepo,
+    );
 
     await expect(
       unconfiguredService.sendBillMessage({
