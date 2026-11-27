@@ -30,28 +30,29 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.44',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.45',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 46,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 47,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.44',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.45',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.44 Update Available! 🚀',
+        'DairyDesk v1.0.45 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Gujarati Translations: complete Gujarati localization for bulk card scanning and upload\n' +
-          '• Bulk Customer Creation: fixed phone validation and customer unique number preservation\n' +
-          '• Customer Search & Filter: natural search by customer unique number (1, 2, 3...) and name with Gujarati numerals\n' +
-          '• Distinct release file: DairyDesk_v1.0.44_Update.apk',
+        '• Card OCR Validation: strict verification requiring customer name or phone before card drafting\n' +
+          '• Bulk Customer Safety: collision-free unique customer number allocation\n' +
+          '• Collection Progress: strictly 2 tabs (All & Completed) with exact numeric search (5, 10, etc.)\n' +
+          '• Gujarati Localization: complete translation of all bulk customer and card scanning actions\n' +
+          '• Distinct release file: DairyDesk_v1.0.45_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.44/DairyDesk_v1.0.44_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.45/DairyDesk_v1.0.45_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '62.9 MB',
       publishedAt: new Date().toISOString(),
     };

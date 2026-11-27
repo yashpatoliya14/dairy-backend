@@ -27,7 +27,7 @@ describe('CustomersService - Milk Entries & Card', () => {
     mockCustomersRepo = {
       findOne: vi.fn(),
       find: vi.fn(),
-      create: vi.fn(),
+      create: vi.fn((data) => ({ cid: 'c_' + Math.random(), ...data })),
       getEntityManager: () => mockEntityManager,
     };
 
@@ -316,7 +316,7 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(singleBill.hasPayment).toBe(true);
   });
 
-  it('scanCards returns customer drafts gracefully when no key is configured', async () => {
+  it('scanCards rejects blank/invalid cards with no customer name or phone', async () => {
     const fakeUser = { uid: 'u1' };
     const fakeDistributor = { did: 'd1', user: fakeUser };
     mockUsersRepo.findOne.mockResolvedValue(fakeUser);
@@ -328,8 +328,35 @@ describe('CustomersService - Milk Entries & Card', () => {
     mockCustomersRepo.find.mockResolvedValue([]);
 
     const result = await service.scanCards('u1', ['data:image/jpeg;base64,12345']);
+    expect(result.success).toBe(false);
+    expect(result.customers.length).toBe(0);
+    expect(result.rejectedCount).toBe(1);
+    expect(result.message).toContain('કોઈપણ કાર્ડમાં માન્ય ગ્રાહકનું નામ અથવા મોબાઈલ નંબર મળ્યો નથી');
+  });
+
+  it('bulkCreate ensures unique numbers never collide with existing customers', async () => {
+    const fakeUser = { uid: 'u1' };
+    const fakeDistributor = { did: 'd1', user: fakeUser };
+    mockUsersRepo.findOne.mockResolvedValue(fakeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
+    mockSettingsService.valuesFor.mockResolvedValue({
+      defaultLiters: 1.5,
+      defaultPrice: 60.0,
+    });
+    // Customer #1 already exists!
+    mockCustomersRepo.find.mockResolvedValue([
+      { cid: 'c1', uniqueNumber: '1', distributor: fakeDistributor },
+    ]);
+
+    const result = await service.bulkCreate('u1', [
+      { name: 'Customer A', uniqueNumber: '1' },
+      { name: 'Customer B', uniqueNumber: '' },
+    ]);
+
     expect(result.success).toBe(true);
-    expect(result.customers.length).toBe(1);
-    expect(result.customers[0].name).toBe('Customer #1');
+    expect(result.customers.length).toBe(2);
+    // Since uniqueNumber '1' was already taken, Customer A must get next available number '2'
+    expect(result.customers[0].uniqueNumber).toBe('2');
+    expect(result.customers[1].uniqueNumber).toBe('3');
   });
 });
