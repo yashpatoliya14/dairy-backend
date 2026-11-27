@@ -30,29 +30,29 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.40',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.41',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 42,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 43,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.40',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.41',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.40 Update Available! 🚀',
+        'DairyDesk v1.0.41 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Decluttered customer cards: removed ₹/L rate pill and Bill button for cleaner view\n' +
-          '• Bulk Add moved to Dashboard Quick Actions for easy access\n' +
-          '• AI Milk Card Scanning: OCR extraction improvements\n' +
-          '• Customizable Daily Reminders (02:00 PM & 10:00 PM)\n' +
-          '• Distinct release file: DairyDesk_v1.0.40_Update.apk',
+        '• Critical bug fixes in payment settlement & bill refresh\n' +
+          '• Decluttered customer cards & quick access actions\n' +
+          '• Fixed WhatsApp test mock stability & scale: 2 decimal precision\n' +
+          '• Mobile customer bill and data sync enhancements\n' +
+          '• Distinct release file: DairyDesk_v1.0.41_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.40/DairyDesk_v1.0.40_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.41/DairyDesk_v1.0.41_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '62.9 MB',
       publishedAt: new Date().toISOString(),
     };
