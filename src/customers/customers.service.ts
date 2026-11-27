@@ -86,7 +86,7 @@ export class CustomersService {
     };
   }
 
-  async scanCards(userId: string, images: string[]) {
+  async scanCards(userId: string, images: string[], apiKey?: string) {
     const settings = await this.settingsService.valuesFor(userId);
     const distributor = await this.distributorFor(userId);
     let nextNum = await this.nextNumericUniqueNumber(distributor);
@@ -100,13 +100,41 @@ export class CustomersService {
       notificationChannel: string;
     }> = [];
 
-    const geminiKey = process.env.GEMINI_API_KEY;
+    const geminiKey = (apiKey?.trim() || process.env.GEMINI_API_KEY || '').trim();
+
+    if (!geminiKey) {
+      return {
+        success: false,
+        apiKeyRequired: true,
+        message:
+          'Google Gemini API Key is required for card AI analysis. Please provide a key in settings or backend config.',
+        customers: [],
+      };
+    }
+
+    const convertGujaratiDigits = (str: string): string => {
+      const map: Record<string, string> = {
+        '૦': '0',
+        '૧': '1',
+        '૨': '2',
+        '૩': '3',
+        '૪': '4',
+        '૫': '5',
+        '૬': '6',
+        '૭': '7',
+        '૮': '8',
+        '૯': '9',
+      };
+      return (str || '').replace(/[૦-૯]/g, (char) => map[char] || char);
+    };
+
+    let lastErrorMsg = '';
 
     for (let i = 0; i < images.length; i++) {
       const rawImg = images[i];
       let cardParsed = false;
 
-      if (geminiKey && rawImg && rawImg.length > 50) {
+      if (rawImg && rawImg.length > 50) {
         try {
           let mimeType = 'image/jpeg';
           let base64Data = rawImg;
@@ -116,57 +144,85 @@ export class CustomersService {
             base64Data = parts[1];
           }
 
-          const prompt = `You are an expert OCR and data extractor for Indian milk dairy customer cards (દૂધ કાર્ડ / ગ્રાહક નોંધ).
-Analyze this image of a customer milk card or passbook.
+          const prompt = `You are an expert OCR and data extractor for Indian milk dairy customer cards (દૂધ ગ્રાહક કાર્ડ / Customer Milk Card).
+Analyze this image of a customer milk card or passbook carefully.
 Extract the customer details.
+
+CRITICAL EXTRACTION RULES:
+1. Customer Name (ગ્રાહકનું નામ): Extract exact full name as written on the card (e.g. "Harsh Vyas", "અશ્વિનભાઈ વાઘેલા", "Pooja Parmar", "હીનાબેન શાહ").
+2. Mobile Number (મોબાઈલ નંબર): Extract 10-digit mobile number. If written in Gujarati numerals (e.g. ૯૪૨૮૦ ૭૭૯૪૭), convert each digit to standard English digits: ૦->0, ૧->1, ૨->2, ૩->3, ૪->4, ૫->5, ૬->6, ૭->7, ૮->8, ૯->9. Example: 9428077947. Strip all spaces and symbols.
+3. Daily Quantity (દૈનિક જથ્થો / લિટર): Extract milk quantity in Litres as a float (e.g. "2.5 Litres" -> 2.5, "૪ લિટર" -> 4.0, "1.5 Litres" -> 1.5). Convert Gujarati numbers if present.
+4. Rate per Litre (ભાવ પ્રતિ લિટર): Extract price per litre in Rupees as a number (e.g. "₹ 58 / Litre" -> 58, "રૂ. ૭૦ / લિટર" -> 70). Convert Gujarati numbers if present.
+5. Customer ID (ગ્રાહક નં. / Customer ID): Extract as string or number (e.g. "2005", "૧૦૦૭" -> "1007", "2002", "1002").
+
 Return a JSON array of objects with the following schema:
 [
   {
-    "name": "Customer Name (in English or Gujarati script)",
-    "phoneNumber": "10-digit mobile number if visible (digits only, e.g. 9876543210), otherwise empty string",
-    "customerNumber": "Card or sequential number if visible, otherwise empty",
-    "liters": 1.0, // default daily liters as number (e.g. 1.0, 1.5, 2.0)
-    "price": 60.0 // rate per liter as number (e.g. 60, 65, 70)
+    "name": "Customer Name",
+    "phoneNumber": "10-digit mobile number",
+    "customerNumber": "2005",
+    "liters": 1.5,
+    "price": 70.0
   }
 ]
-If there are multiple customer entries or lines on this sheet/card, extract all of them.
-Return ONLY valid JSON.`;
+Return ONLY raw valid JSON. Do not include markdown tags or other text.`;
 
-          const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
-            {
-              contents: [
+          let textRes = '';
+          const modelsToTry = [
+            'gemini-1.5-flash',
+            'gemini-2.0-flash',
+            'gemini-2.5-flash',
+          ];
+
+          for (const model of modelsToTry) {
+            try {
+              const response = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
                 {
-                  parts: [
-                    { text: prompt },
+                  contents: [
                     {
-                      inlineData: {
-                        mimeType,
-                        data: base64Data,
-                      },
+                      parts: [
+                        { text: prompt },
+                        {
+                          inlineData: {
+                            mimeType,
+                            data: base64Data,
+                          },
+                        },
+                      ],
                     },
                   ],
+                  generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.1,
+                  },
                 },
-              ],
-              generationConfig: {
-                responseMimeType: 'application/json',
-                temperature: 0.1,
-              },
-            },
-            { timeout: 15000 },
-          );
+                { timeout: 20000 },
+              );
+              textRes =
+                response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+              if (textRes) break;
+            } catch (modelErr: any) {
+              this.logger.warn(`Model ${model} try failed: ${modelErr?.message}`);
+            }
+          }
 
-          const textRes =
-            response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
           if (textRes) {
-            const parsed = JSON.parse(textRes);
+            // Clean markdown code blocks if any
+            let cleanJson = textRes.trim();
+            if (cleanJson.startsWith('```json')) {
+              cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim();
+            } else if (cleanJson.startsWith('```')) {
+              cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim();
+            }
+
+            const parsed = JSON.parse(cleanJson);
             const list = Array.isArray(parsed) ? parsed : [parsed];
             for (const item of list) {
               if (item && (item.name || item.phoneNumber)) {
-                let cleanPhone = String(item.phoneNumber ?? '').replace(
-                  /\D/g,
-                  '',
-                );
+                let cleanPhone = convertGujaratiDigits(
+                  String(item.phoneNumber ?? ''),
+                ).replace(/\D/g, '');
                 if (cleanPhone.length > 10 && cleanPhone.startsWith('91')) {
                   cleanPhone = cleanPhone.slice(2);
                 } else if (
@@ -176,18 +232,28 @@ Return ONLY valid JSON.`;
                   cleanPhone = cleanPhone.slice(1);
                 }
 
+                const parsedLiters = parseFloat(
+                  convertGujaratiDigits(String(item.liters ?? '')),
+                );
+                const parsedPrice = parseFloat(
+                  convertGujaratiDigits(String(item.price ?? '')),
+                );
+                const rawCardNum = convertGujaratiDigits(
+                  String(item.customerNumber ?? ''),
+                ).trim();
+
                 extractedCustomers.push({
                   name: String(item.name || `Customer #${nextNum}`).trim(),
                   phoneNumber: cleanPhone,
                   liters:
-                    Number(item.liters) > 0
-                      ? Number(item.liters)
+                    !isNaN(parsedLiters) && parsedLiters > 0
+                      ? parsedLiters
                       : settings.defaultLiters,
                   price:
-                    Number(item.price) > 0
-                      ? Number(item.price)
+                    !isNaN(parsedPrice) && parsedPrice > 0
+                      ? parsedPrice
                       : settings.defaultPrice,
-                  uniqueNumber: String(item.customerNumber || nextNum++),
+                  uniqueNumber: rawCardNum || String(nextNum++),
                   notificationChannel: 'whatsapp',
                 });
                 cardParsed = true;
@@ -195,22 +261,25 @@ Return ONLY valid JSON.`;
             }
           }
         } catch (err: any) {
+          lastErrorMsg =
+            err?.response?.data?.error?.message ||
+            err?.message ||
+            'Error communicating with Gemini AI';
           this.logger.warn(
             `Gemini card OCR extraction note: ${err?.message ?? err}`,
           );
         }
       }
+    }
 
-      if (!cardParsed) {
-        extractedCustomers.push({
-          name: `Customer #${nextNum}`,
-          phoneNumber: '',
-          liters: settings.defaultLiters,
-          price: settings.defaultPrice,
-          uniqueNumber: String(nextNum++),
-          notificationChannel: 'whatsapp',
-        });
-      }
+    if (extractedCustomers.length === 0) {
+      return {
+        success: false,
+        message:
+          lastErrorMsg ||
+          'Could not extract customer details from image(s). Please verify the image is clear and valid.',
+        customers: [],
+      };
     }
 
     return {

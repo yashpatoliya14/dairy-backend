@@ -315,4 +315,21 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(singleBill.thisMonthDue).toBe(60);
     expect(singleBill.hasPayment).toBe(true);
   });
+
+  it('scanCards returns apiKeyRequired when no key is configured', async () => {
+    const fakeUser = { uid: 'u1' };
+    const fakeDistributor = { did: 'd1', user: fakeUser };
+    mockUsersRepo.findOne.mockResolvedValue(fakeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
+    mockSettingsService.valuesFor.mockResolvedValue({
+      defaultLiters: 1.0,
+      defaultPrice: 60.0,
+    });
+    mockCustomersRepo.find.mockResolvedValue([]);
+
+    const result = await service.scanCards('u1', ['data:image/jpeg;base64,12345']);
+    expect(result.success).toBe(false);
+    expect(result.apiKeyRequired).toBe(true);
+    expect(result.customers).toEqual([]);
+  });
 });

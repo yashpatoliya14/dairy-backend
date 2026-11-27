@@ -50,7 +50,11 @@ export class CustomersController {
     @Req() request: AuthenticatedRequest,
     @Body() dto: ScanCardsDto,
   ) {
-    return this.customersService.scanCards(request.user.sub, dto.images);
+    return this.customersService.scanCards(
+      request.user.sub,
+      dto.images,
+      dto.apiKey,
+    );
   }
 
   @Patch(':customerId')

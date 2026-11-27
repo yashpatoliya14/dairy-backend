@@ -45,14 +45,15 @@ export class AppService {
         'DairyDesk v1.0.40 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Critical bug fixes in payment settlement & bill refresh\n' +
-          '• Fixed WhatsApp test mock stability & scale: 2 decimal precision\n' +
-          '• Mobile customer bill and data sync enhancements\n' +
+        '• Decluttered customer cards: removed ₹/L rate pill and Bill button for cleaner view\n' +
+          '• Bulk Add moved to Dashboard Quick Actions for easy access\n' +
+          '• AI Milk Card Scanning: OCR extraction improvements\n' +
+          '• Customizable Daily Reminders (02:00 PM & 10:00 PM)\n' +
           '• Distinct release file: DairyDesk_v1.0.40_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
         'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.40/DairyDesk_v1.0.40_Update.apk',
-      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '61.7 MB',
+      apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '62.9 MB',
       publishedAt: new Date().toISOString(),
     };
   }
