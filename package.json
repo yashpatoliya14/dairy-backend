@@ -40,7 +40,8 @@
     "dotenv": "^18.0.5",
     "nodemailer": "^10.1.2",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@mikro-orm/cli": "^7.2.3",

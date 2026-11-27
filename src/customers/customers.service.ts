@@ -4,7 +4,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import axios from 'axios';
+import Tesseract from 'tesseract.js';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { EntityRepository } from '@mikro-orm/postgresql';
 import { Customer, NotificationChannel } from '../entities/customer.entity.js';
@@ -86,7 +86,7 @@ export class CustomersService {
     };
   }
 
-  async scanCards(userId: string, images: string[], apiKey?: string) {
+  async scanCards(userId: string, images: string[], _apiKey?: string) {
     const settings = await this.settingsService.valuesFor(userId);
     const distributor = await this.distributorFor(userId);
     let nextNum = await this.nextNumericUniqueNumber(distributor);
@@ -100,8 +100,6 @@ export class CustomersService {
       notificationChannel: string;
     }> = [];
 
-    const geminiKey = (apiKey?.trim() || process.env.GEMINI_API_KEY || '').trim();
-
     const convertGujaratiDigits = (str: string): string => {
       const map: Record<string, string> = {
         '૦': '0',
@@ -114,11 +112,19 @@ export class CustomersService {
         '૭': '7',
         '૮': '8',
         '૯': '9',
+        '०': '0',
+        '१': '1',
+        '२': '2',
+        '३': '3',
+        '४': '4',
+        '५': '5',
+        '६': '6',
+        '७': '7',
+        '८': '8',
+        '९': '9',
       };
-      return (str || '').replace(/[૦-૯]/g, (char) => map[char] || char);
+      return (str || '').replace(/[૦-૯०-९]/g, (char) => map[char] || char);
     };
-
-    let lastErrorMsg = '';
 
     for (let i = 0; i < images.length; i++) {
       const rawImg = images[i];
@@ -126,138 +132,103 @@ export class CustomersService {
 
       if (rawImg && rawImg.length > 50) {
         try {
-          let mimeType = 'image/jpeg';
           let base64Data = rawImg;
           if (rawImg.includes(';base64,')) {
-            const parts = rawImg.split(';base64,');
-            mimeType = parts[0].replace('data:', '');
-            base64Data = parts[1];
+            base64Data = rawImg.split(';base64,')[1];
           }
 
-          const prompt = `You are an expert OCR and data extractor for Indian milk dairy customer cards (દૂધ ગ્રાહક કાર્ડ / Customer Milk Card).
-Analyze this image of a customer milk card or passbook carefully.
-Extract the customer details.
+          const imgBuffer = Buffer.from(base64Data, 'base64');
+          const ocrResult = await Tesseract.recognize(imgBuffer, 'eng');
+          const rawOcrText = ocrResult?.data?.text || '';
 
-CRITICAL EXTRACTION RULES:
-1. Customer Name (ગ્રાહકનું નામ): Extract exact full name as written on the card (e.g. "Harsh Vyas", "અશ્વિનભાઈ વાઘેલા", "Pooja Parmar", "હીનાબેન શાહ").
-2. Mobile Number (મોબાઈલ નંબર): Extract 10-digit mobile number. If written in Gujarati numerals (e.g. ૯૪૨૮૦ ૭૭૯૪૭), convert each digit to standard English digits: ૦->0, ૧->1, ૨->2, ૩->3, ૪->4, ૫->5, ૬->6, ૭->7, ૮->8, ૯->9. Example: 9428077947. Strip all spaces and symbols.
-3. Daily Quantity (દૈનિક જથ્થો / લિટર): Extract milk quantity in Litres as a float (e.g. "2.5 Litres" -> 2.5, "૪ લિટર" -> 4.0, "1.5 Litres" -> 1.5). Convert Gujarati numbers if present.
-4. Rate per Litre (ભાવ પ્રતિ લિટર): Extract price per litre in Rupees as a number (e.g. "₹ 58 / Litre" -> 58, "રૂ. ૭૦ / લિટર" -> 70). Convert Gujarati numbers if present.
-5. Customer ID (ગ્રાહક નં. / Customer ID): Extract as string or number (e.g. "2005", "૧૦૦૭" -> "1007", "2002", "1002").
+          if (rawOcrText.trim().length > 0) {
+            const text = convertGujaratiDigits(rawOcrText);
+            const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-Return a JSON array of objects with the following schema:
-[
-  {
-    "name": "Customer Name",
-    "phoneNumber": "10-digit mobile number",
-    "customerNumber": "2005",
-    "liters": 1.5,
-    "price": 70.0
-  }
-]
-Return ONLY raw valid JSON. Do not include markdown tags or other text.`;
+            let extractedName = '';
+            let extractedPhone = '';
+            let extractedLiters: number | null = null;
+            let extractedPrice: number | null = null;
+            let extractedNum = '';
 
-          let textRes = '';
-          const modelsToTry = [
-            'gemini-1.5-flash',
-            'gemini-2.0-flash',
-            'gemini-2.5-flash',
-          ];
-
-          for (const model of modelsToTry) {
-            try {
-              const response = await axios.post(
-                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-                {
-                  contents: [
-                    {
-                      parts: [
-                        { text: prompt },
-                        {
-                          inlineData: {
-                            mimeType,
-                            data: base64Data,
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                  generationConfig: {
-                    responseMimeType: 'application/json',
-                    temperature: 0.1,
-                  },
-                },
-                { timeout: 20000 },
-              );
-              textRes =
-                response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-              if (textRes) break;
-            } catch (modelErr: any) {
-              this.logger.warn(`Model ${model} try failed: ${modelErr?.message}`);
-            }
-          }
-
-          if (textRes) {
-            // Clean markdown code blocks if any
-            let cleanJson = textRes.trim();
-            if (cleanJson.startsWith('```json')) {
-              cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim();
-            } else if (cleanJson.startsWith('```')) {
-              cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim();
-            }
-
-            const parsed = JSON.parse(cleanJson);
-            const list = Array.isArray(parsed) ? parsed : [parsed];
-            for (const item of list) {
-              if (item && (item.name || item.phoneNumber)) {
-                let cleanPhone = convertGujaratiDigits(
-                  String(item.phoneNumber ?? ''),
-                ).replace(/\D/g, '');
-                if (cleanPhone.length > 10 && cleanPhone.startsWith('91')) {
-                  cleanPhone = cleanPhone.slice(2);
-                } else if (
-                  cleanPhone.length > 10 &&
-                  cleanPhone.startsWith('0')
-                ) {
-                  cleanPhone = cleanPhone.slice(1);
+            // 1. Phone number (10 digits starting with 6-9, or prefixed with +91/91/0)
+            const phoneMatch = text.match(/(?:(?:\+?91|0)[\s-]?)?([6-9]\d{4}[\s-]?\d{5}|[6-9]\d{9})\b/);
+            if (phoneMatch) {
+              extractedPhone = phoneMatch[1].replace(/[\s-]/g, '');
+            } else {
+              for (const line of lines) {
+                const digitsOnly = line.replace(/\D/g, '');
+                if (digitsOnly.length === 10 && /^[6-9]/.test(digitsOnly)) {
+                  extractedPhone = digitsOnly;
+                  break;
                 }
-
-                const parsedLiters = parseFloat(
-                  convertGujaratiDigits(String(item.liters ?? '')),
-                );
-                const parsedPrice = parseFloat(
-                  convertGujaratiDigits(String(item.price ?? '')),
-                );
-                const rawCardNum = convertGujaratiDigits(
-                  String(item.customerNumber ?? ''),
-                ).trim();
-
-                extractedCustomers.push({
-                  name: String(item.name || `Customer #${nextNum}`).trim(),
-                  phoneNumber: cleanPhone,
-                  liters:
-                    !isNaN(parsedLiters) && parsedLiters > 0
-                      ? parsedLiters
-                      : settings.defaultLiters,
-                  price:
-                    !isNaN(parsedPrice) && parsedPrice > 0
-                      ? parsedPrice
-                      : settings.defaultPrice,
-                  uniqueNumber: rawCardNum || String(nextNum++),
-                  notificationChannel: 'whatsapp',
-                });
-                cardParsed = true;
               }
             }
+
+            // 2. Customer Number / ID
+            const numMatch = text.match(/(?:customer\s*(?:no|id|#|code)?|cust\s*(?:no|id|#|code)?|acc(?:ount)?\s*no\.?|card\s*no\.?|ગ્રાહક\s*(?:નંબર|નં)?|સભ્ય\s*નંબર|અ\.નં\.?|નં\.?|no\.?)\s*[:=.\s-]*([A-Za-z0-9-]+)/i);
+            if (numMatch) {
+              const val = numMatch[1].trim();
+              if (!/^(shree|dairy|passbook|farm|milk|date|name)$/i.test(val)) {
+                extractedNum = val;
+              }
+            }
+
+            // 3. Liters (daily milk quantity)
+            const litersMatch = text.match(/(?:daily\s*milk|milk|liters?|ltrs?|ltr|લિટર|લીટર|દૂધ)\s*[:=.\s-]*([0-9]+(?:\.[0-9]+)?)/i) ||
+                                text.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:liters?|ltrs?|ltr|લિટર|લીટર)/i);
+            if (litersMatch) {
+              const parsed = parseFloat(litersMatch[1]);
+              if (!isNaN(parsed) && parsed > 0 && parsed <= 100) {
+                extractedLiters = parsed;
+              }
+            }
+
+            // 4. Rate / Price
+            const priceMatch = text.match(/(?:rate(?:\s*per\s*liter)?|price|ભાવ|દર|રૂ|rs\.?|₹)\s*[:=.\s-]*([0-9]+(?:\.[0-9]+)?)/i) ||
+                               text.match(/(?:rs\.?|₹|રૂ\.?)\s*([0-9]+(?:\.[0-9]+)?)/i);
+            if (priceMatch) {
+              const parsed = parseFloat(priceMatch[1]);
+              if (!isNaN(parsed) && parsed > 0 && parsed <= 500) {
+                extractedPrice = parsed;
+              }
+            }
+
+            // 5. Customer Name
+            const nameMatch = text.match(/(?:customer\s*name|name|ગ્રાહકનું\s*નામ|નામ|ના|શ્રી)\s*[:=.\s-]*([^\r\n]+)/i);
+            if (nameMatch) {
+              extractedName = nameMatch[1]
+                .replace(/^(mr|mrs|shree|shri|smt)\.?\s+/i, '')
+                .replace(/[^\w\s\u0A80-\u0AFF]/g, '')
+                .trim();
+            }
+
+            if (!extractedName || extractedName.length < 2) {
+              for (const line of lines) {
+                if (/dairy|passbook|farm|customer|mobile|phone|milk|rate|price|total|date|card|shree|liters?|ltr|rs|rupees|address/i.test(line)) {
+                  continue;
+                }
+                const clean = line.replace(/[^\w\s\u0A80-\u0AFF]/g, '').trim();
+                const words = clean.split(/\s+/).filter((w) => w.length > 1);
+                if (words.length >= 1 && clean.length >= 3 && clean.length <= 40 && !/\d/.test(clean)) {
+                  extractedName = clean;
+                  break;
+                }
+              }
+            }
+
+            extractedCustomers.push({
+              name: extractedName || `Customer #${extractedNum || nextNum}`,
+              phoneNumber: extractedPhone,
+              liters: extractedLiters ?? settings.defaultLiters,
+              price: extractedPrice ?? settings.defaultPrice,
+              uniqueNumber: extractedNum || String(nextNum++),
+              notificationChannel: 'whatsapp',
+            });
+            cardParsed = true;
           }
         } catch (err: any) {
-          lastErrorMsg =
-            err?.response?.data?.error?.message ||
-            err?.message ||
-            'Error communicating with Gemini AI';
-          this.logger.warn(
-            `Gemini card OCR extraction note: ${err?.message ?? err}`,
-          );
+          this.logger.warn(`Card OCR extraction error: ${err?.message ?? err}`);
         }
       }
 
@@ -902,6 +873,14 @@ Return ONLY raw valid JSON. Do not include markdown tags or other text.`;
       { distributor },
       { orderBy: { uniqueNumber: 'ASC' } },
     );
+    customers.sort((a, b) => {
+      const numA = Number.parseInt(String(a.uniqueNumber || '').replace(/\D/g, ''), 10);
+      const numB = Number.parseInt(String(b.uniqueNumber || '').replace(/\D/g, ''), 10);
+      if (Number.isInteger(numA) && Number.isInteger(numB)) {
+        return numA - numB;
+      }
+      return (a.uniqueNumber || '').localeCompare(b.uniqueNumber || '', undefined, { numeric: true });
+    });
 
     const daysInTargetMonth = new Date(year, month, 0).getDate();
     const targetMonthEnd = new Date(Date.UTC(year, month - 1, daysInTargetMonth, 23, 59, 59, 999));

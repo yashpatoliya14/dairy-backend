@@ -829,6 +829,14 @@ export class WhatsAppService {
       { distributor },
       { orderBy: { uniqueNumber: 'ASC' } },
     );
+    allCustomers.sort((a, b) => {
+      const numA = Number.parseInt(String(a.uniqueNumber || '').replace(/\D/g, ''), 10);
+      const numB = Number.parseInt(String(b.uniqueNumber || '').replace(/\D/g, ''), 10);
+      if (Number.isInteger(numA) && Number.isInteger(numB)) {
+        return numA - numB;
+      }
+      return (a.uniqueNumber || '').localeCompare(b.uniqueNumber || '', undefined, { numeric: true });
+    });
 
     const em = this.customers.getEntityManager();
     const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
