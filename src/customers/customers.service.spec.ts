@@ -316,7 +316,7 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(singleBill.hasPayment).toBe(true);
   });
 
-  it('scanCards returns apiKeyRequired when no key is configured', async () => {
+  it('scanCards returns customer drafts gracefully when no key is configured', async () => {
     const fakeUser = { uid: 'u1' };
     const fakeDistributor = { did: 'd1', user: fakeUser };
     mockUsersRepo.findOne.mockResolvedValue(fakeUser);
@@ -328,8 +328,8 @@ describe('CustomersService - Milk Entries & Card', () => {
     mockCustomersRepo.find.mockResolvedValue([]);
 
     const result = await service.scanCards('u1', ['data:image/jpeg;base64,12345']);
-    expect(result.success).toBe(false);
-    expect(result.apiKeyRequired).toBe(true);
-    expect(result.customers).toEqual([]);
+    expect(result.success).toBe(true);
+    expect(result.customers.length).toBe(1);
+    expect(result.customers[0].name).toBe('Customer #1');
   });
 });

@@ -30,29 +30,29 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.41',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.42',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 43,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 44,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.41',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.42',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.41 Update Available! 🚀',
+        'DairyDesk v1.0.42 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Critical bug fixes in payment settlement & bill refresh\n' +
-          '• Decluttered customer cards & quick access actions\n' +
-          '• Fixed WhatsApp test mock stability & scale: 2 decimal precision\n' +
-          '• Mobile customer bill and data sync enhancements\n' +
-          '• Distinct release file: DairyDesk_v1.0.41_Update.apk',
+        '• 4 Clean Quick Actions on Dashboard (Bulk Add, Broadcast Messages, Customer Directory, Support)\n' +
+          '• Customer list tiles optimized: removed empty white space, balanced layout\n' +
+          '• Streamlined Customer Details screen by removing duplicate top action icons\n' +
+          '• Automated card upload: completely removed manual Gemini API key prompt from app and settings\n' +
+          '• Distinct release file: DairyDesk_v1.0.42_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.41/DairyDesk_v1.0.41_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.42/DairyDesk_v1.0.42_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '62.9 MB',
       publishedAt: new Date().toISOString(),
     };

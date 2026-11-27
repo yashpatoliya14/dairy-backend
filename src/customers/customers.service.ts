@@ -102,16 +102,6 @@ export class CustomersService {
 
     const geminiKey = (apiKey?.trim() || process.env.GEMINI_API_KEY || '').trim();
 
-    if (!geminiKey) {
-      return {
-        success: false,
-        apiKeyRequired: true,
-        message:
-          'Google Gemini API Key is required for card AI analysis. Please provide a key in settings or backend config.',
-        customers: [],
-      };
-    }
-
     const convertGujaratiDigits = (str: string): string => {
       const map: Record<string, string> = {
         '૦': '0',
@@ -270,16 +260,17 @@ Return ONLY raw valid JSON. Do not include markdown tags or other text.`;
           );
         }
       }
-    }
 
-    if (extractedCustomers.length === 0) {
-      return {
-        success: false,
-        message:
-          lastErrorMsg ||
-          'Could not extract customer details from image(s). Please verify the image is clear and valid.',
-        customers: [],
-      };
+      if (!cardParsed) {
+        extractedCustomers.push({
+          name: `Customer #${nextNum}`,
+          phoneNumber: '',
+          liters: settings.defaultLiters,
+          price: settings.defaultPrice,
+          uniqueNumber: String(nextNum++),
+          notificationChannel: 'whatsapp',
+        });
+      }
     }
 
     return {
