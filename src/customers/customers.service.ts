@@ -1,8 +1,10 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import axios from 'axios';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { EntityRepository } from '@mikro-orm/postgresql';
 import { Customer, NotificationChannel } from '../entities/customer.entity.js';
@@ -36,6 +38,187 @@ export class CustomersService {
     private readonly settingsService: SettingsService,
     private readonly whatsappService: WhatsAppService,
   ) {}
+
+  private readonly logger = new Logger(CustomersService.name);
+
+  async bulkCreate(userId: string, dtos: CreateCustomerDto[]) {
+    const distributor = await this.distributorFor(userId);
+    const settings = await this.settingsService.valuesFor(userId);
+    const user = await this.userFor(userId);
+    let nextNum = await this.nextNumericUniqueNumber(distributor);
+    const em = this.customers.getEntityManager();
+    const created: Customer[] = [];
+
+    for (const dto of dtos) {
+      if (!dto.name || !dto.name.trim()) continue;
+      const cleanPhone = (dto.phoneNumber || '').trim();
+      const customer = this.customers.create({
+        cid: randomUUID(),
+        distributor,
+        user,
+        name: dto.name.trim(),
+        uniqueNumber: String(nextNum++),
+        liters:
+          dto.liters !== undefined && dto.liters !== null
+            ? Number(dto.liters)
+            : settings.defaultLiters,
+        price:
+          dto.price !== undefined && dto.price !== null
+            ? Number(dto.price)
+            : settings.defaultPrice,
+        phoneNumber: cleanPhone,
+        notificationChannel: (dto.notificationChannel ||
+          'whatsapp') as NotificationChannel,
+        isActive: true,
+      });
+      em.persist(customer);
+      created.push(customer);
+    }
+
+    if (created.length > 0) {
+      await em.flush();
+    }
+
+    return {
+      success: true,
+      count: created.length,
+      customers: created.map((c) => this.serialize(c)),
+    };
+  }
+
+  async scanCards(userId: string, images: string[]) {
+    const settings = await this.settingsService.valuesFor(userId);
+    const distributor = await this.distributorFor(userId);
+    let nextNum = await this.nextNumericUniqueNumber(distributor);
+
+    const extractedCustomers: Array<{
+      name: string;
+      phoneNumber: string;
+      liters: number;
+      price: number;
+      uniqueNumber: string;
+      notificationChannel: string;
+    }> = [];
+
+    const geminiKey = process.env.GEMINI_API_KEY;
+
+    for (let i = 0; i < images.length; i++) {
+      const rawImg = images[i];
+      let cardParsed = false;
+
+      if (geminiKey && rawImg && rawImg.length > 50) {
+        try {
+          let mimeType = 'image/jpeg';
+          let base64Data = rawImg;
+          if (rawImg.includes(';base64,')) {
+            const parts = rawImg.split(';base64,');
+            mimeType = parts[0].replace('data:', '');
+            base64Data = parts[1];
+          }
+
+          const prompt = `You are an expert OCR and data extractor for Indian milk dairy customer cards (દૂધ કાર્ડ / ગ્રાહક નોંધ).
+Analyze this image of a customer milk card or passbook.
+Extract the customer details.
+Return a JSON array of objects with the following schema:
+[
+  {
+    "name": "Customer Name (in English or Gujarati script)",
+    "phoneNumber": "10-digit mobile number if visible (digits only, e.g. 9876543210), otherwise empty string",
+    "customerNumber": "Card or sequential number if visible, otherwise empty",
+    "liters": 1.0, // default daily liters as number (e.g. 1.0, 1.5, 2.0)
+    "price": 60.0 // rate per liter as number (e.g. 60, 65, 70)
+  }
+]
+If there are multiple customer entries or lines on this sheet/card, extract all of them.
+Return ONLY valid JSON.`;
+
+          const response = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+            {
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                    {
+                      inlineData: {
+                        mimeType,
+                        data: base64Data,
+                      },
+                    },
+                  ],
+                },
+              ],
+              generationConfig: {
+                responseMimeType: 'application/json',
+                temperature: 0.1,
+              },
+            },
+            { timeout: 15000 },
+          );
+
+          const textRes =
+            response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (textRes) {
+            const parsed = JSON.parse(textRes);
+            const list = Array.isArray(parsed) ? parsed : [parsed];
+            for (const item of list) {
+              if (item && (item.name || item.phoneNumber)) {
+                let cleanPhone = String(item.phoneNumber ?? '').replace(
+                  /\D/g,
+                  '',
+                );
+                if (cleanPhone.length > 10 && cleanPhone.startsWith('91')) {
+                  cleanPhone = cleanPhone.slice(2);
+                } else if (
+                  cleanPhone.length > 10 &&
+                  cleanPhone.startsWith('0')
+                ) {
+                  cleanPhone = cleanPhone.slice(1);
+                }
+
+                extractedCustomers.push({
+                  name: String(item.name || `Customer #${nextNum}`).trim(),
+                  phoneNumber: cleanPhone,
+                  liters:
+                    Number(item.liters) > 0
+                      ? Number(item.liters)
+                      : settings.defaultLiters,
+                  price:
+                    Number(item.price) > 0
+                      ? Number(item.price)
+                      : settings.defaultPrice,
+                  uniqueNumber: String(item.customerNumber || nextNum++),
+                  notificationChannel: 'whatsapp',
+                });
+                cardParsed = true;
+              }
+            }
+          }
+        } catch (err: any) {
+          this.logger.warn(
+            `Gemini card OCR extraction note: ${err?.message ?? err}`,
+          );
+        }
+      }
+
+      if (!cardParsed) {
+        extractedCustomers.push({
+          name: `Customer #${nextNum}`,
+          phoneNumber: '',
+          liters: settings.defaultLiters,
+          price: settings.defaultPrice,
+          uniqueNumber: String(nextNum++),
+          notificationChannel: 'whatsapp',
+        });
+      }
+    }
+
+    return {
+      success: true,
+      extractedCount: extractedCustomers.length,
+      customers: extractedCustomers,
+    };
+  }
 
   async create(userId: string, dto: CreateCustomerDto) {
     const distributor = await this.distributorFor(userId);
@@ -566,7 +749,7 @@ export class CustomersService {
     return user;
   }
 
-  private async nextUniqueNumber(distributor: Distributor) {
+  private async nextNumericUniqueNumber(distributor: Distributor): Promise<number> {
     const customers = await this.customers.find(
       { distributor },
       { fields: ['uniqueNumber'] },
@@ -575,7 +758,12 @@ export class CustomersService {
       const number = Number.parseInt(customer.uniqueNumber, 10);
       return Number.isInteger(number) && number > highest ? number : highest;
     }, 0);
-    return String(highestNumber + 1);
+    return highestNumber + 1;
+  }
+
+  private async nextUniqueNumber(distributor: Distributor) {
+    const num = await this.nextNumericUniqueNumber(distributor);
+    return String(num);
   }
 
   private async customerFor(userId: string, customerId: string) {

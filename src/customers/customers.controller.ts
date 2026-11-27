@@ -15,6 +15,8 @@ import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { CreateCustomerDto } from './dto/create-customer.dto.js';
+import { BulkCreateCustomersDto } from './dto/bulk-create-customers.dto.js';
+import { ScanCardsDto } from './dto/scan-cards.dto.js';
 import { CreateMilkEntryDto } from './dto/create-milk-entry.dto.js';
 import { CreatePaymentEntryDto } from './dto/create-payment-entry.dto.js';
 import { UpdateCustomerDto } from './dto/update-customer.dto.js';
@@ -33,6 +35,22 @@ export class CustomersController {
   @Post()
   create(@Req() request: AuthenticatedRequest, @Body() dto: CreateCustomerDto) {
     return this.customersService.create(request.user.sub, dto);
+  }
+
+  @Post('bulk')
+  bulkCreate(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: BulkCreateCustomersDto,
+  ) {
+    return this.customersService.bulkCreate(request.user.sub, dto.customers);
+  }
+
+  @Post('scan-cards')
+  scanCards(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: ScanCardsDto,
+  ) {
+    return this.customersService.scanCards(request.user.sub, dto.images);
   }
 
   @Patch(':customerId')

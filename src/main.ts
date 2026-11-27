@@ -3,6 +3,7 @@ import { AppModule } from './app.module.js';
 import { ValidationPipe } from '@nestjs/common';
 import { RequestLoggingMiddleware } from './common/request-logging.middleware.js';
 import { runMigration } from './migrations/run-migration.js';
+import express from 'express';
 
 async function bootstrap() {
   try {
@@ -12,6 +13,8 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
   const requestLogger = new RequestLoggingMiddleware();
   app.use(requestLogger.use.bind(requestLogger));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
