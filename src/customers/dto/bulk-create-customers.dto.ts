@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsIn,
@@ -7,12 +7,15 @@ import {
   IsOptional,
   IsString,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { IsCustomerPhoneNumber } from './customer-phone.validator.js';
 
 export class BulkCustomerItemDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Customer name is required' })
   name!: string;
 
   @IsOptional()
@@ -26,10 +29,14 @@ export class BulkCustomerItemDto {
   price?: number;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
+  @ValidateIf((o) => typeof o.phoneNumber === 'string' && o.phoneNumber.trim().length > 0)
+  @IsCustomerPhoneNumber()
   phoneNumber?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   uniqueNumber?: string;
 
@@ -44,4 +51,3 @@ export class BulkCreateCustomersDto {
   @Type(() => BulkCustomerItemDto)
   customers!: BulkCustomerItemDto[];
 }
-

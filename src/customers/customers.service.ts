@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -7,6 +8,7 @@ import {
 import Tesseract from 'tesseract.js';
 import { InjectRepository } from '@mikro-orm/nestjs';
 import { EntityRepository } from '@mikro-orm/postgresql';
+import { UniqueConstraintViolationException } from '@mikro-orm/core';
 import { Customer, NotificationChannel } from '../entities/customer.entity.js';
 import { Distributor } from '../entities/distributor.entity.js';
 import { User } from '../entities/user.entity.js';
@@ -41,78 +43,381 @@ export class CustomersService {
   ) {}
 
   private readonly logger = new Logger(CustomersService.name);
+  private ocrQueue: Promise<unknown> = Promise.resolve();
+
+  private enqueueOcr<T>(task: () => Promise<T>): Promise<T> {
+    const next = this.ocrQueue.then(task, task);
+    this.ocrQueue = next.catch(() => undefined);
+    return next;
+  }
 
   async bulkCreate(userId: string, dtos: BulkCustomerItemDto[]) {
     const distributor = await this.distributorFor(userId);
     const settings = await this.settingsService.valuesFor(userId);
     const user = await this.userFor(userId);
-    let nextNum = await this.nextNumericUniqueNumber(distributor);
     const em = this.customers.getEntityManager();
-    const created: Customer[] = [];
 
-    // Fetch existing customer unique numbers for this distributor to avoid unique constraint violations
-    const existingCustomers = await this.customers.find(
-      { distributor },
-      { fields: ['uniqueNumber'] },
-    );
-    const existingNumbers = new Set(
-      existingCustomers.map((c) => String(c.uniqueNumber || '').trim()),
-    );
+    const runBulk = async (txEm: typeof em) => {
+      const existingCustomers =
+        txEm !== em
+          ? await txEm.find(
+              Customer,
+              { distributor },
+              { fields: ['uniqueNumber'] },
+            )
+          : await this.customers.find(
+              { distributor },
+              { fields: ['uniqueNumber'] },
+            );
 
-    for (const dto of dtos) {
-      if (!dto.name || !dto.name.trim()) continue;
-      const cleanPhone = (dto.phoneNumber || '').trim();
-      const customNum = (dto.uniqueNumber || '').trim();
+      const existingNumbers = new Set(
+        existingCustomers.map((c) => String(c.uniqueNumber || '').trim()),
+      );
+      let nextNum = existingCustomers.reduce((highest, customer) => {
+        const number = Number.parseInt(customer.uniqueNumber, 10);
+        return Number.isInteger(number) && number > highest ? number : highest;
+      }, 0) + 1;
 
-      let assignedNum = customNum;
-      if (!assignedNum || existingNumbers.has(assignedNum)) {
-        while (existingNumbers.has(String(nextNum))) {
-          nextNum++;
+      const created: Customer[] = [];
+      for (const dto of dtos) {
+        if (!dto.name || !dto.name.trim()) continue;
+        const cleanPhone = (dto.phoneNumber || '').trim();
+        const customNum = (dto.uniqueNumber || '').trim();
+        const isPositiveInt = /^[1-9]\d*$/.test(customNum);
+
+        let assignedNum = customNum;
+        if (!isPositiveInt || existingNumbers.has(assignedNum)) {
+          while (existingNumbers.has(String(nextNum))) {
+            nextNum++;
+          }
+          assignedNum = String(nextNum++);
         }
-        assignedNum = String(nextNum++);
-      }
-      existingNumbers.add(assignedNum);
+        existingNumbers.add(assignedNum);
 
-      const customer = this.customers.create({
-        cid: randomUUID(),
-        distributor,
-        user,
-        name: dto.name.trim(),
-        uniqueNumber: assignedNum,
-        liters:
-          dto.liters !== undefined && dto.liters !== null
+        const liters =
+          dto.liters !== undefined && dto.liters !== null && Number(dto.liters) > 0
             ? Number(dto.liters)
-            : settings.defaultLiters,
-        price:
-          dto.price !== undefined && dto.price !== null
+            : Number(settings.defaultLiters || 1);
+        const price =
+          dto.price !== undefined && dto.price !== null && Number(dto.price) >= 0
             ? Number(dto.price)
-            : settings.defaultPrice,
-        phoneNumber: cleanPhone,
-        notificationChannel: (dto.notificationChannel ||
-          'whatsapp') as NotificationChannel,
-        isActive: true,
-      });
-      em.persist(customer);
-      created.push(customer);
+            : Number(settings.defaultPrice || 0);
+
+        const customer = this.customers.create({
+          cid: randomUUID(),
+          distributor,
+          user,
+          name: dto.name.trim(),
+          uniqueNumber: assignedNum,
+          liters,
+          price,
+          phoneNumber: cleanPhone,
+          notificationChannel: (dto.notificationChannel ||
+            'whatsapp') as NotificationChannel,
+          isActive: true,
+        });
+        txEm.persist(customer);
+        created.push(customer);
+      }
+
+      if (created.length > 0) {
+        await txEm.flush();
+      }
+      return created;
+    };
+
+    try {
+      const created: Customer[] =
+        typeof (em as any).transactional === 'function'
+          ? await (em as any).transactional(runBulk)
+          : await runBulk(em);
+
+      return {
+        success: true,
+        count: created.length,
+        customers: created.map((c: Customer) => this.serialize(c)),
+      };
+    } catch (err) {
+      if (err instanceof UniqueConstraintViolationException) {
+        throw new ConflictException(
+          'Customer number conflict detected. Please refresh and try again.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  private isSupportedImageBuffer(buf: Buffer): boolean {
+    if (!buf || buf.length < 64) return false;
+    const isJpeg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    const isPng =
+      buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+    const isGif =
+      buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46;
+    const isBmp = buf[0] === 0x42 && buf[1] === 0x4d;
+    const isWebp =
+      buf.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buf.subarray(8, 12).toString('ascii') === 'WEBP';
+    return isJpeg || isPng || isGif || isBmp || isWebp;
+  }
+
+  parseScannedCardText(
+    rawOcrText: string,
+    defaults: { defaultLiters: number; defaultPrice: number },
+  ): {
+    name: string;
+    phoneNumber: string;
+    liters: number;
+    price: number;
+  } | null {
+    const convertDigits = (str: string): string => {
+      const map: Record<string, string> = {
+        '૦': '0', '૧': '1', '૨': '2', '૩': '3', '૪': '4',
+        '૫': '5', '૬': '6', '૭': '7', '૮': '8', '૯': '9',
+        '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+        '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+      };
+      return (str || '').replace(/[૦-૯०-९]/g, (ch) => map[ch] || ch);
+    };
+
+    const text = convertDigits(rawOcrText || '');
+    const lower = text.toLowerCase();
+
+    // Reject app screenshots or clearly non-card UI images
+    const strongUiPhrases = [
+      'gemini api key',
+      'aistudio.google.com',
+      'paste gemini',
+      'daily reminder',
+      'ડેઇલી રિમાઇન્ડર',
+      'રિમાઇન્ડર સેવ કરો',
+      'collection progress',
+      'સંગ્રહ પ્રગતિ',
+      'quick actions',
+      'ઝડપી ક્રિયાઓ',
+      'extracted customers',
+      'મેળવેલ ગ્રાહકો',
+      'confirm & add all',
+      'ખાતરી કરો અને બધા ઉમેરો',
+      'no cards uploaded',
+      'હજુ સુધી કોઈ કાર્ડ',
+      'bulk milk card',
+      'બલ્ક મિલ્ક કાર્ડ',
+      'check for updates',
+      'account balance overview',
+      'add with last entry',
+      'replace entry',
+      'search google photos',
+      'welcome back',
+      'ફરી સ્વાગત છે',
+      'view bill & entries',
+      'create account',
+      'already have an account',
+      'send test notification',
+      'dairy desk',
+      'ડેરી ડેસ્ક',
+      'milk defaults',
+      'record milk',
+      'ડિફૉલ્ટ લિટર',
+      'પ્રતિ લિટર ભાવ',
+      'ગ્રાહક ઉમેરો',
+      'એન્ટ્રી',
+      'ચૂકતે',
+    ];
+    if (strongUiPhrases.some((phrase) => lower.includes(phrase))) {
+      return null;
     }
 
-    if (created.length > 0) {
-      await em.flush();
+    const lines = text
+      .split(/\r?\n/)
+      .map((l) => l.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    if (lines.length === 0) return null;
+
+    // 1. Mobile Phone Number (10-digit Indian mobile starting with 6-9)
+    let extractedPhone = '';
+    const phoneLabelLineRegex =
+      /(?:mobile|mob\.?|phone|contact|mo\.?|whatsapp|મોબાઈલ|મોબાઇલ|મો\.?|ફોન|વોટ્સએપ|मोबाइल|मो\.?|फ़ोन|फोन|संपर्क)/i;
+    for (const line of lines) {
+      if (!phoneLabelLineRegex.test(line)) continue;
+      const digits = line.replace(/\D/g, '');
+      const m = digits.match(/^(?:91|0)?([6-9]\d{9})$/) || digits.match(/(?:^|91|0)([6-9]\d{9})/);
+      if (m) {
+        extractedPhone = m[1];
+        break;
+      }
+    }
+    if (!extractedPhone) {
+      const phoneMatch = text.match(
+        /(?:(?:\+?91|0)[\s-]?)?([6-9]\d{4}[\s-]?\d{5}|[6-9]\d{9})(?!\d)/,
+      );
+      if (phoneMatch) {
+        extractedPhone = phoneMatch[1].replace(/[\s-]/g, '');
+      }
+    }
+
+    // 2. Liters (daily milk quantity) - skip price/rate lines to avoid confusing ₹60/Liter with 60L
+    let extractedLiters: number | null = null;
+    const priceLineHintRegex =
+      /(?:rate|price|rs\.?|₹|ભાવ|દર|રૂ\.?|રકમ|दर|भाव|कीमत|रु\.?)/i;
+    const litersLabelRegex =
+      /(?:daily\s*milk|daily\s*(?:qty|quantity)|milk\s*(?:qty|quantity)?|liters?|ltrs?|ltr|દૈનિક\s*દૂધ|દૈનિક\s*જથ્થો|દૈનિક\s*જથૂથો|દૂધનો\s*જથ્થો|દૂધ|જથ્થો|જથૂથો|લિટર|લીટર|લટિર|दैनिक\s*दूध|दूध\s*की\s*मात्रा|दूध|मात्रा|लीटर|लिटर|लटिर)\s*[:=\-|.\s]*([0-9]+(?:[.,][0-9]+)?)\s*(ml|મિલી|મિ\.લી|मि\.?ली\.?)?/i;
+    const litersUnitRegex =
+      /([0-9]+(?:[.,][0-9]+)?)\s*(?:liters?|ltrs?|ltr|લિટર|લીટર|લટિર|લી\.|લિ\.|लीटर|लिटर|लटिर|ली\.|लि\.|ml|મિલી|मि\.?ली\.?)/i;
+
+    for (const line of lines) {
+      const hasRateHint = priceLineHintRegex.test(line) && !/(?:daily|દૈનિક|દૂધ|જથ્થો|જથૂથો|दैनिक|दूध|मात्रा)/i.test(line);
+      if (hasRateHint) continue;
+      const lm = line.match(litersLabelRegex) || line.match(litersUnitRegex);
+      if (lm) {
+        let parsed = parseFloat(lm[1].replace(',', '.'));
+        const unit = (lm[2] || '').toLowerCase();
+        if (unit.includes('ml') || unit.includes('મિ') || unit.includes('मि')) {
+          parsed = parsed / 1000;
+        }
+        if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 100) {
+          extractedLiters = Math.round(parsed * 100) / 100;
+          break;
+        }
+      }
+    }
+
+    // 3. Rate / Price per liter
+    let extractedPrice: number | null = null;
+    const priceRegex =
+      /(?:rate(?:\s*per\s*liter)?|price|rs\.?|₹|ભાવ|દર|રૂ\.?|ર\.|दर|भाव|कीमत|रु\.?)\s*[:=\-|.\s]*([0-9]+(?:[.,][0-9]+)?)/i;
+    for (const line of lines) {
+      const lineDigits = line.replace(/\D/g, '');
+      if (extractedPhone && lineDigits.includes(extractedPhone)) continue;
+      const pm = line.match(priceRegex);
+      if (pm) {
+        const parsed = parseFloat(pm[1].replace(',', '.'));
+        if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 500) {
+          extractedPrice = Math.round(parsed * 100) / 100;
+          break;
+        }
+      }
+    }
+
+    // 4. Customer Name (English, Gujarati, or Hindi) - STRICTLY REQUIRED
+    const cleanCandidate = (cand: string): string => {
+      if (!cand) return '';
+      let c = cand
+        .replace(/(?:(?:\+?91|0)[\s-]?)?[6-9]\d{4}[\s-]?\d{5}|[6-9]\d{9}/g, ' ')
+        .replace(/^[|[\]【】\s.:_\-—=~*#/\\;,]+|[|[\]【】\s.:_\-—=~*#/\\;,]+$/g, '')
+        .replace(/^(?:mr|mrs|ms|smt)\.?\s+/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!c || c.length > 60) return '';
+      // Reject numbers/addresses/dates masquerading as customer names
+      if (/\d/.test(c)) return '';
+
+      const headerBlacklist =
+        /^(?:muster\s*card|monthly\s*milk\s*card|milk\s*card|dudh\s*card|દૂધ\s*કાર્ડ|दूध\s*कार्ड|name\s*of\s*(?:the\s*)?(?:worker|factory)|factory|worker|address|monthly\s*pay|pay|month|date|present|adv|advance|balance|total\s*pay|total|signature|receiver|thumb|impression|morning|evening|liters?|ltr|rate|price|rs|rupees|dairy|passbook|farm|customer|mobile|phone|number|required|settings|reminder|cow|buffalo|ગ્રાહક|નામ|સરનામું|તારીખ|માસ|મહિનો|લિટર|લીટર|ભાવ|દર|રકમ|કુલ|બાકી|ચૂકવેલ|સવાર|સાંજ|સહી|અંગૂઠો|દૂધ|ખાતા|ખાતા\s*નં|સભ્ય|અ\.નં|નં|મોબાઈલ|મોબાઇલ|ફોન|ડેરી|ફાર્મ|ગાય|ભેંસ|ગ્રાહકનું\s*નામ|ग्राहक|नाम|पता|तारीख|दिनांक|मास|महीना|लीटर|लिटर|भाव|दर|रकम|कुल|बाकी|सुबह|शाम|हस्ताक्षर|दूध|मोबाइल|फ़ोन|फोन|डेयरी|फार्म|गाय|भैंस|ग्राहक\s*का\s*नाम|or\s*customer\s*number|gemini\s*api\s*key\s*required|settings\s*noti|shree\s*gokul\s*dairy|શ્રી\s*ગોકુલ\s*ડેરી|श्री\s*गोकुल\s*डेयरी)$/i;
+      if (headerBlacklist.test(c)) return '';
+
+      const lettersOnly = c.replace(/[^A-Za-z\u0A80-\u0AFF\u0900-\u097F]/g, '');
+      if (lettersOnly.length < 2) return '';
+
+      // Reject excessive non-letter garbage symbols
+      const nonSpace = c.replace(/\s/g, '');
+      const validScriptChars = c.replace(/[^A-Za-z\u0A80-\u0AFF\u0900-\u097F.'-]/g, '');
+      if (nonSpace.length > 0 && validScriptChars.length / nonSpace.length < 0.7) {
+        return '';
+      }
+
+      // Reject pure single-letter gibberish tokens like "a b c d"
+      const tokens = c.split(' ').filter(Boolean);
+      if (tokens.length >= 3 && tokens.every((t) => t.length === 1)) {
+        return '';
+      }
+
+      return c;
+    };
+
+    let extractedName = '';
+    const multiWordNameLabelRegex =
+      /(?:customer\s*name|cust\.?\s*name|member\s*name|holder\s*name|client\s*name|account\s*holder|name\s*of\s*(?:the\s*)?worker|worker\s*name|ગ્રાહકનું\s*નામ|ગ્રાહક\s*નું\s*નામ|ગ્રાહક\s*નામ|સભ્યનું\s*નામ|ग्राहक\s*का\s*नाम|ग्राहक\s*नाम|सदस्य\s*का\s*नाम)\s*[:=\-|.\s]+(.+)$/i;
+    const singleWordGujHinNameRegex =
+      /(?:^|[\s|\].:-])(?:નામ|नाम)\s*[:=\-|.]*\s+(.+)$/;
+    const singleWordEngNameRegex =
+      /^[|[\]\s]*name\s*[:=\-|.]+\s*(.+)$/i;
+    const singleWordEngSpaceNameRegex =
+      /^[|[\]\s]*name\s+([A-Za-z\u0A80-\u0AFF\u0900-\u097F].+)$/i;
+    const labelOnlyLineRegex =
+      /^[|[\]\s]*(?:customer\s*name|cust\.?\s*name|member\s*name|holder\s*name|name|ગ્રાહકનું\s*નામ|ગ્રાહક\s*નું\s*નામ|ગ્રાહક\s*નામ|સભ્યનું\s*નામ|નામ|ग्राहक\s*का\s*नाम|ग्राहक\s*नाम|सदस्य\s*का\s*नाम|नाम)\s*[:=\-|.]*$/i;
+
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
+      const match =
+        line.match(multiWordNameLabelRegex) ||
+        line.match(singleWordGujHinNameRegex) ||
+        line.match(singleWordEngNameRegex) ||
+        line.match(singleWordEngSpaceNameRegex);
+      if (match) {
+        const cand = cleanCandidate(match[1]);
+        if (cand) {
+          extractedName = cand;
+          break;
+        }
+      }
+      if (labelOnlyLineRegex.test(line) && idx + 1 < lines.length) {
+        const cand = cleanCandidate(lines[idx + 1]);
+        if (cand) {
+          extractedName = cand;
+          break;
+        }
+      }
+    }
+
+    // Fallback for unlabelled / cropped milk cards that have clear phone or milk quantity
+    if (!extractedName && (extractedPhone || extractedLiters !== null)) {
+      const nonPersonHintRegex =
+        /(?:dairy|ડેરી|डेयरी|farm|ફાર્મ|फार्म|milk|દૂધ|दूध|road|રોડ|रोड|nagar|નગર|नगर|society|સોસાયટી|सोसायटी|apt|apartment|એપાર્ટમેન્ટ|flat|ફ્લેટ|फ्लैट|village|ગામ|गांव|rajkot|ahmedabad|surat|vadodara|jaipur|bhavnagar|jamnagar|cow|buffalo|ગાય|ભેંસ|गाय|भैंस|address|સરનામું|पता|date|તારીખ|दिनांक|bill|total|કુલ|कुल)/i;
+      const phoneIdx = extractedPhone
+        ? lines.findIndex((l) => l.replace(/\D/g, '').includes(extractedPhone))
+        : -1;
+      const searchIndices =
+        phoneIdx > 0
+          ? [phoneIdx - 1, ...lines.map((_, i) => i).filter((i) => i !== phoneIdx - 1)]
+          : lines.map((_, i) => i);
+
+      for (const idx of searchIndices) {
+        const line = lines[idx];
+        if (nonPersonHintRegex.test(line)) continue;
+        const cand = cleanCandidate(line);
+        const words = cand.split(' ').filter(Boolean);
+        if (cand && words.length >= 1 && words.length <= 4) {
+          extractedName = cand;
+          break;
+        }
+      }
+    }
+
+    // Strict validation: if no customer name is detected, reject the card completely
+    if (!extractedName) {
+      return null;
     }
 
     return {
-      success: true,
-      count: created.length,
-      customers: created.map((c) => this.serialize(c)),
+      name: extractedName,
+      phoneNumber: extractedPhone,
+      liters: extractedLiters ?? defaults.defaultLiters,
+      price: extractedPrice ?? defaults.defaultPrice,
     };
   }
 
   async scanCards(userId: string, images: string[], _apiKey?: string) {
     const settings = await this.settingsService.valuesFor(userId);
     const distributor = await this.distributorFor(userId);
-    let nextNum = await this.nextNumericUniqueNumber(distributor);
 
-    // Fetch existing numbers to prevent duplicates in suggested unique numbers
+    const defaultLiters =
+      Number(settings.defaultLiters) > 0 ? Number(settings.defaultLiters) : 1.0;
+    const defaultPrice =
+      Number(settings.defaultPrice) >= 0 ? Number(settings.defaultPrice) : 0.0;
+
+    let nextNum = await this.nextNumericUniqueNumber(distributor);
     const existingCustomers = await this.customers.find(
       { distributor },
       { fields: ['uniqueNumber'] },
@@ -130,190 +435,85 @@ export class CustomersService {
       notificationChannel: string;
     }> = [];
 
-    const convertGujaratiDigits = (str: string): string => {
-      const map: Record<string, string> = {
-        '૦': '0', '૧': '1', '૨': '2', '૩': '3', '૪': '4',
-        '૫': '5', '૬': '6', '૭': '7', '૮': '8', '૯': '9',
-        '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
-        '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
-      };
-      return (str || '').replace(/[૦-૯०-९]/g, (char) => map[char] || char);
-    };
-
     let rejectedCount = 0;
+    const validBuffers: Array<{ index: number; buffer: Buffer }> = [];
 
     for (let i = 0; i < images.length; i++) {
       const rawImg = images[i];
-
       if (!rawImg || rawImg.length <= 50) {
         rejectedCount++;
         continue;
       }
-
       try {
         let base64Data = rawImg;
         if (rawImg.includes(';base64,')) {
           base64Data = rawImg.split(';base64,')[1];
         }
-
         const imgBuffer = Buffer.from(base64Data, 'base64');
-        const ocrResult = await Tesseract.recognize(imgBuffer, 'eng');
-        const rawOcrText = ocrResult?.data?.text || '';
-
-        if (!rawOcrText || rawOcrText.trim().length === 0) {
+        if (!this.isSupportedImageBuffer(imgBuffer)) {
           rejectedCount++;
           continue;
         }
-
-        const text = convertGujaratiDigits(rawOcrText);
-        const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
-        let extractedName = '';
-        let extractedPhone = '';
-        let extractedLiters: number | null = null;
-        let extractedPrice: number | null = null;
-        let extractedNum = '';
-
-        // 1. Phone number (10 digits starting with 6-9, optionally with +91/0 prefix)
-        const phoneMatch = text.match(/(?:(?:\+?91|0)[\s-]?)?([6-9]\d{4}[\s-]?\d{5}|[6-9]\d{9})\b/);
-        if (phoneMatch) {
-          extractedPhone = phoneMatch[1].replace(/[\s-]/g, '');
-        } else {
-          for (const line of lines) {
-            const digitsOnly = line.replace(/\D/g, '');
-            if (digitsOnly.length === 10 && /^[6-9]/.test(digitsOnly)) {
-              extractedPhone = digitsOnly;
-              break;
-            }
-          }
-        }
-
-        // 2. Customer Number / ID / Card No
-        const numMatch = text.match(
-          /(?:customer\s*(?:no|id|#|code)?|cust\s*(?:no|id|#|code)?|acc(?:ount)?\s*no\.?|card\s*no\.?|ખાતા\s*નં(?:બર)?\.?|ગ્રાહક\s*(?:નંબર|નં)?|સભ્ય\s*નંબર|અ\.નં\.?|નં\.?|no\.?)\s*[:=.\s_-]*([A-Za-z0-9-]+)/i,
-        );
-        if (numMatch) {
-          const val = numMatch[1].replace(/^[.:_\-\s]+|[.:_\-\s]+$/g, '').trim();
-          if (
-            val.length > 0 &&
-            !/^(shree|dairy|passbook|farm|milk|date|name|card|muster|monthly|month|worker)$/i.test(val)
-          ) {
-            extractedNum = val;
-          }
-        }
-
-        // 3. Liters (daily milk quantity)
-        const litersMatch =
-          text.match(/(?:daily\s*milk|milk|liters?|ltrs?|ltr|લિટર|લીટર|દૂધ)\s*[:=.\s_-]*([0-9]+(?:\.[0-9]+)?)/i) ||
-          text.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:liters?|ltrs?|ltr|લિટર|લીટર)/i);
-        if (litersMatch) {
-          const parsed = parseFloat(litersMatch[1]);
-          if (!isNaN(parsed) && parsed > 0 && parsed <= 100) {
-            extractedLiters = parsed;
-          }
-        }
-
-        // 4. Rate / Price
-        const priceMatch =
-          text.match(/(?:rate(?:\s*per\s*liter)?|price|ભાવ|દર|રૂ|rs\.?|₹)\s*[:=.\s_-]*([0-9]+(?:\.[0-9]+)?)/i) ||
-          text.match(/(?:rs\.?|₹|રૂ\.?)\s*([0-9]+(?:\.[0-9]+)?)/i);
-        if (priceMatch) {
-          const parsed = parseFloat(priceMatch[1]);
-          if (!isNaN(parsed) && parsed > 0 && parsed <= 500) {
-            extractedPrice = parsed;
-          }
-        }
-
-        // Helper to validate and sanitize candidate name string
-        const cleanCandidate = (cand: string): string => {
-          if (!cand) return '';
-          let c = cand
-            .replace(/^(mr|mrs|shree|shri|smt)\.?\s+/i, '')
-            .replace(/^[\s.:_\-—=~*#|/\\;,]+|[\s.:_\-—=~*#|/\\;,]+$/g, '')
-            .trim();
-          // If candidate is mostly dots, underscores or dashes, treat as empty dotted line
-          const stripped = c.replace(/[\s.:_\-—=~*#|/\\;,]/g, '');
-          if (stripped.length < 2) return '';
-
-          // Disallow pure header titles or form keywords
-          const headerBlacklist =
-            /^(muster\s*card|monthly\s*milk\s*card|milk\s*card|dudh\s*card|દૂધ\s*કાર્ડ|name\s*of\s*(?:the\s*)?(?:worker|factory)|factory|worker|address|monthly\s*pay|pay|month|date|present|adv|advance|balance|total\s*pay|total|signature|receiver|thumb|impression|morning|evening|liters?|ltr|rate|price|rs|rupees|dairy|passbook|farm|customer|ગ્રાહક|નામ|સરનામું|તારીખ|માસ|મહિનો|લિટર|ભાવ|રકમ|કુલ|બાકી|ચૂકવેલ|સવાર|સાંજ|સહી|અંગૂઠો|દૂધ|ખાતા|ખાતા\s*નં|સભ્ય|અ\.નં|નં|શ્રી|જય\s*શ્રી\s*કૃષ્ણ|ગણેશ)$/i;
-          if (headerBlacklist.test(c.trim())) return '';
-
-          // Require at least 2 alphabetic or Gujarati characters
-          const lettersOnly = c.replace(/[^A-Za-z\u0A80-\u0AFF]/g, '');
-          if (lettersOnly.length < 2) return '';
-
-          return c;
-        };
-
-        // 5. Customer Name extraction
-        const nameLabelRegex =
-          /(?:name\s*of\s*(?:the\s*)?worker|worker\s*name|customer\s*name|cust\s*name|ગ્રાહકનું\s*નામ|ગ્રાહક|નામ|name)\s*[:=.\s_-]+([^\r\n]+)/i;
-        const nameMatch = text.match(nameLabelRegex);
-
-        if (nameMatch) {
-          extractedName = cleanCandidate(nameMatch[1]);
-        }
-
-        // If not found on the same line, check if label is on one line and name is immediately on the next line
-        if (!extractedName) {
-          for (let idx = 0; idx < lines.length - 1; idx++) {
-            const l = lines[idx].trim();
-            if (
-              /^(?:name\s*of\s*(?:the\s*)?worker|worker\s*name|customer\s*name|name|નામ|ગ્રાહકનું\s*નામ|ગ્રાહક)\s*[:=.\s_-]*$/i.test(
-                l,
-              )
-            ) {
-              const cand = cleanCandidate(lines[idx + 1]);
-              if (cand) {
-                extractedName = cand;
-                break;
-              }
-            }
-          }
-        }
-
-        // STRICT VALIDATION (User Requirement):
-        // If an image has NEITHER an identified customer name NOR a valid mobile number,
-        // it must NOT be attached or drafted! Do not invent dummy names.
-        if (!extractedName && !extractedPhone) {
-          rejectedCount++;
-          continue;
-        }
-
-        // Assign a unique number that does not collide
-        let assignedNum = extractedNum;
-        if (!assignedNum || existingNumbers.has(assignedNum)) {
-          while (existingNumbers.has(String(nextNum))) {
-            nextNum++;
-          }
-          assignedNum = String(nextNum++);
-        }
-        existingNumbers.add(assignedNum);
-
-        extractedCustomers.push({
-          name: extractedName || `Customer #${assignedNum}`,
-          phoneNumber: extractedPhone,
-          liters: extractedLiters ?? settings.defaultLiters,
-          price: extractedPrice ?? settings.defaultPrice,
-          uniqueNumber: assignedNum,
-          notificationChannel: 'whatsapp',
-        });
-      } catch (err: any) {
-        this.logger.warn(`Card OCR extraction error: ${err?.message ?? err}`);
+        validBuffers.push({ index: i, buffer: imgBuffer });
+      } catch {
         rejectedCount++;
       }
+    }
+
+    if (validBuffers.length > 0) {
+      await this.enqueueOcr(async () => {
+        const worker = await Tesseract.createWorker(['eng', 'guj', 'hin']);
+        try {
+          for (const item of validBuffers) {
+            try {
+              const ocrResult = await worker.recognize(item.buffer);
+              const rawOcrText = ocrResult?.data?.text || '';
+              const parsed = this.parseScannedCardText(rawOcrText, {
+                defaultLiters,
+                defaultPrice,
+              });
+              if (!parsed) {
+                rejectedCount++;
+                continue;
+              }
+
+              while (existingNumbers.has(String(nextNum))) {
+                nextNum++;
+              }
+              const assignedNum = String(nextNum++);
+              existingNumbers.add(assignedNum);
+
+              extractedCustomers.push({
+                name: parsed.name,
+                phoneNumber: parsed.phoneNumber,
+                liters: parsed.liters,
+                price: parsed.price,
+                uniqueNumber: assignedNum,
+                notificationChannel: 'whatsapp',
+              });
+            } catch (err: any) {
+              this.logger.warn(
+                `Card OCR extraction error: ${err?.message ?? err}`,
+              );
+              rejectedCount++;
+            }
+          }
+        } finally {
+          await worker.terminate();
+        }
+      });
     }
 
     if (extractedCustomers.length === 0) {
       return {
         success: false,
         message:
-          'કોઈપણ કાર્ડમાં માન્ય ગ્રાહકનું નામ અથવા મોબાઈલ નંબર મળ્યો નથી. કૃપા કરીને વિગતો ભરેલું દૂધ કાર્ડ અપલોડ કરો.',
+          'કાર્ડમાંથી ગ્રાહકનું નામ ડિટેક્ટ થઈ શક્યું નથી. કૃપા કરીને સ્પષ્ટ ગ્રાહકનું નામ ધરાવતું દૂધ કાર્ડ અપલોડ કરો.',
         extractedCount: 0,
         customers: [],
         rejectedCount,
+        nextCustomerNumber: nextNum,
+        dairyDefaults: { defaultLiters, defaultPrice },
       };
     }
 
@@ -322,6 +522,8 @@ export class CustomersService {
       extractedCount: extractedCustomers.length,
       customers: extractedCustomers,
       rejectedCount,
+      nextCustomerNumber: nextNum,
+      dairyDefaults: { defaultLiters, defaultPrice },
     };
   }
 

@@ -316,7 +316,7 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(singleBill.hasPayment).toBe(true);
   });
 
-  it('scanCards rejects blank/invalid cards with no customer name or phone', async () => {
+  it('scanCards rejects blank/invalid cards with no customer name', async () => {
     const fakeUser = { uid: 'u1' };
     const fakeDistributor = { did: 'd1', user: fakeUser };
     mockUsersRepo.findOne.mockResolvedValue(fakeUser);
@@ -331,32 +331,86 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(result.success).toBe(false);
     expect(result.customers.length).toBe(0);
     expect(result.rejectedCount).toBe(1);
-    expect(result.message).toContain('કોઈપણ કાર્ડમાં માન્ય ગ્રાહકનું નામ અથવા મોબાઈલ નંબર મળ્યો નથી');
+    expect(result.message).toContain('કાર્ડમાંથી ગ્રાહકનું નામ ડિટેક્ટ થઈ શક્યું નથી');
   });
 
-  it('bulkCreate ensures unique numbers never collide with existing customers', async () => {
+  it('parseScannedCardText detects Gujarati, Hindi, and English names, mobile, and milk with dairy fallback', () => {
+    const defaults = { defaultLiters: 1.5, defaultPrice: 50 };
+
+    const guj = service.parseScannedCardText(
+      'શ્રી ગોકુલ ડેરી\nગ્રાહકનું નામ ચીમનભાઈ પટેલ\nમોબાઈલ નંબર ૯૮૯૮૦ ૨૨૩૪૨\nદૈનિક જથ્થો ૨.૫ લિટર\nભાવ રૂ. ૭૦ / લીટર',
+      defaults,
+    );
+    expect(guj).toEqual({
+      name: 'ચીમનભાઈ પટેલ',
+      phoneNumber: '9898022342',
+      liters: 2.5,
+      price: 70,
+    });
+
+    const hin = service.parseScannedCardText(
+      'श्री गोकुल डेयरी\nग्राहक का नाम : रमेश कुमार शर्मा\nमोबाइल नंबर : 98765 43210\nदैनिक दूध : 2.0 लीटर',
+      defaults,
+    );
+    expect(hin).toEqual({
+      name: 'रमेश कुमार शर्मा',
+      phoneNumber: '9876543210',
+      liters: 2,
+      price: 50, // dairy default
+    });
+
+    const engNoMilk = service.parseScannedCardText(
+      'Shree Gokul Dairy\nCustomer Name: Pooja Parmar\nMobile No: +91 99040 62345',
+      defaults,
+    );
+    expect(engNoMilk).toEqual({
+      name: 'Pooja Parmar',
+      phoneNumber: '9904062345',
+      liters: 1.5, // dairy default
+      price: 50, // dairy default
+    });
+
+    // Rejects phone-only / screenshot text without valid customer name
+    expect(
+      service.parseScannedCardText('Mobile: 9898022342\nGemini API Key Required', defaults),
+    ).toBeNull();
+    expect(
+      service.parseScannedCardText('Daily Reminder Settings\n02:00 PM\n01:10 AM', defaults),
+    ).toBeNull();
+    expect(
+      service.parseScannedCardText('Search by name or customer number\n#12 Haresh', defaults),
+    ).toBeNull();
+  });
+
+  it('bulkCreate ensures static sequential unique numbers starting after highest existing customer', async () => {
     const fakeUser = { uid: 'u1' };
     const fakeDistributor = { did: 'd1', user: fakeUser };
     mockUsersRepo.findOne.mockResolvedValue(fakeUser);
     mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
     mockSettingsService.valuesFor.mockResolvedValue({
       defaultLiters: 1.5,
-      defaultPrice: 60.0,
+      defaultPrice: 50.0,
     });
-    // Customer #1 already exists!
+    // Last customer #12 already exists
     mockCustomersRepo.find.mockResolvedValue([
       { cid: 'c1', uniqueNumber: '1', distributor: fakeDistributor },
+      { cid: 'c12', uniqueNumber: '12', distributor: fakeDistributor },
     ]);
 
     const result = await service.bulkCreate('u1', [
-      { name: 'Customer A', uniqueNumber: '1' },
-      { name: 'Customer B', uniqueNumber: '' },
+      { name: 'Customer A', uniqueNumber: '12' }, // collides -> gets 13
+      { name: 'Customer B', uniqueNumber: 'abc' }, // non-numeric -> gets 14
+      { name: 'Customer C', uniqueNumber: '15', liters: 2.5, price: 70 },
     ]);
 
     expect(result.success).toBe(true);
-    expect(result.customers.length).toBe(2);
-    // Since uniqueNumber '1' was already taken, Customer A must get next available number '2'
-    expect(result.customers[0].uniqueNumber).toBe('2');
-    expect(result.customers[1].uniqueNumber).toBe('3');
+    expect(result.customers.length).toBe(3);
+    expect(result.customers[0].uniqueNumber).toBe('13');
+    expect(result.customers[0].liters).toBe(1.5);
+    expect(result.customers[0].price).toBe(50);
+    expect(result.customers[1].uniqueNumber).toBe('14');
+    expect(result.customers[2].uniqueNumber).toBe('15');
+    expect(result.customers[2].liters).toBe(2.5);
+    expect(result.customers[2].price).toBe(70);
   });
 });
