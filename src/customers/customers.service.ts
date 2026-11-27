@@ -13,6 +13,7 @@ import { User } from '../entities/user.entity.js';
 import { MilkEntry } from '../entities/milk-entry.entity.js';
 import { PaymentEntry } from '../entities/payment-entry.entity.js';
 import { CreateCustomerDto } from './dto/create-customer.dto.js';
+import { BulkCustomerItemDto } from './dto/bulk-create-customers.dto.js';
 import { UpdateCustomerDto } from './dto/update-customer.dto.js';
 import { CreateMilkEntryDto } from './dto/create-milk-entry.dto.js';
 import { CreatePaymentEntryDto } from './dto/create-payment-entry.dto.js';
@@ -41,7 +42,7 @@ export class CustomersService {
 
   private readonly logger = new Logger(CustomersService.name);
 
-  async bulkCreate(userId: string, dtos: CreateCustomerDto[]) {
+  async bulkCreate(userId: string, dtos: BulkCustomerItemDto[]) {
     const distributor = await this.distributorFor(userId);
     const settings = await this.settingsService.valuesFor(userId);
     const user = await this.userFor(userId);
@@ -52,12 +53,14 @@ export class CustomersService {
     for (const dto of dtos) {
       if (!dto.name || !dto.name.trim()) continue;
       const cleanPhone = (dto.phoneNumber || '').trim();
+      const customNum = (dto.uniqueNumber || '').trim();
+      const assignedNum = customNum || String(nextNum++);
       const customer = this.customers.create({
         cid: randomUUID(),
         distributor,
         user,
         name: dto.name.trim(),
-        uniqueNumber: String(nextNum++),
+        uniqueNumber: assignedNum,
         liters:
           dto.liters !== undefined && dto.liters !== null
             ? Number(dto.liters)
