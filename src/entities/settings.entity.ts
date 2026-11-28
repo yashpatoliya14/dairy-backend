@@ -37,4 +37,8 @@ export class Settings {
 
   @Property({ type: 'boolean', fieldName: 'light_mode', default: true })
   lightMode = true;
+
+  /** Shows the "other item" inputs in the milk entry dialog. */
+  @Property({ type: 'boolean', fieldName: 'other_items_enabled', default: false })
+  otherItemsEnabled = false;
 }

@@ -1214,16 +1214,21 @@ export class WhatsAppService {
       const monthStart = `${cleanDateStr.slice(0, 7)}-01`;
       if (conn) {
         try {
+          // Bills include other items (ghee, paneer...) bought alongside milk
           const monthEntries = await conn.execute<Array<{ total: number | string }>>(
-            'SELECT total FROM milk_entries WHERE cid = ? AND entry_date >= ? AND entry_date <= ?',
-            [customer.cid, monthStart, cleanDateStr],
+            `SELECT total FROM milk_entries WHERE cid = ? AND entry_date >= ? AND entry_date <= ?
+             UNION ALL
+             SELECT amount FROM other_item_entries WHERE cid = ? AND entry_date >= ? AND entry_date <= ?`,
+            [customer.cid, monthStart, cleanDateStr, customer.cid, monthStart, cleanDateStr],
           );
           const sum = monthEntries.reduce((acc, e) => acc + Number(e.total ?? 0), 0);
           if (sum > 0) monthToDateBill = roundToCurrency(sum);
 
           const pastEntries = await conn.execute<Array<{ total: number | string }>>(
-            'SELECT total FROM milk_entries WHERE cid = ? AND entry_date < ?',
-            [customer.cid, monthStart],
+            `SELECT total FROM milk_entries WHERE cid = ? AND entry_date < ?
+             UNION ALL
+             SELECT amount FROM other_item_entries WHERE cid = ? AND entry_date < ?`,
+            [customer.cid, monthStart, customer.cid, monthStart],
           );
           const pastBills = pastEntries.reduce((acc, e) => acc + Number(e.total ?? 0), 0);
 

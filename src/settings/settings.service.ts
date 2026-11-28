@@ -28,7 +28,7 @@ export class SettingsService {
 
   async update(
     userId: string,
-    values: { defaultLiters?: number; defaultPrice?: number },
+    values: { defaultLiters?: number; defaultPrice?: number; otherItemsEnabled?: boolean },
   ) {
     const distributor = await this.distributorFor(userId);
     const settings = await this.settingsFor(distributor);
@@ -36,6 +36,8 @@ export class SettingsService {
       settings.defaultLiters = values.defaultLiters;
     if (values.defaultPrice !== undefined)
       settings.defaultPrice = values.defaultPrice;
+    if (values.otherItemsEnabled !== undefined)
+      settings.otherItemsEnabled = values.otherItemsEnabled;
     await this.settings.getEntityManager().flush();
     return this.serialize(settings);
   }
@@ -55,6 +57,7 @@ export class SettingsService {
       defaultPrice: DEFAULT_PRICE,
       darkMode: false,
       lightMode: true,
+      otherItemsEnabled: false,
     });
     this.settings.getEntityManager().persist(created);
     await this.settings.getEntityManager().flush();
@@ -73,6 +76,7 @@ export class SettingsService {
     return {
       defaultLiters: settings.defaultLiters,
       defaultPrice: settings.defaultPrice,
+      otherItemsEnabled: settings.otherItemsEnabled === true,
     };
   }
 }

@@ -30,30 +30,29 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.49',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.50',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 51,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 52,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.49',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.50',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.49 Update Available! 🚀',
+        'DairyDesk v1.0.50 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Faster milk entry saving and daily summary\n' +
-          '• Loader shown while switching dashboard dates\n' +
-          '• Cleaner dashboard cards and new calendar design\n' +
-          '• Redesigned Add Customer page\n' +
-          '• Phone numbers with +91 are cleaned automatically\n' +
-          '• Release APK: DairyDesk_v1.0.49_Update.apk',
+        '• NEW: Other items purchase (ghee, paneer...) with milk entry — turn on in Settings\n' +
+          '• Bills show other items separately with name and price\n' +
+          '• Clearer Add / Replace choice in milk entry\n' +
+          '• Edit customer uses the new customer form\n' +
+          '• Release APK: DairyDesk_v1.0.50_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.49/DairyDesk_v1.0.49_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.50/DairyDesk_v1.0.50_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '63.0 MB',
       publishedAt: new Date().toISOString(),
     };

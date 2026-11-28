@@ -280,9 +280,11 @@ describe('CustomersService - Milk Entries & Card', () => {
     mockCustomersRepo.find.mockResolvedValue([fakeCustomer]);
     mockCustomersRepo.findOne.mockResolvedValue(fakeCustomer);
     // Bulk summary reads SQL rows (pg returns decimals as strings)
-    const execute = vi.fn().mockResolvedValue([
-      { cid: 'c1', d: '2026-11-05', liters: '2.00', total: '120.00' },
-    ]);
+    const execute = vi.fn(async (sql: string) =>
+      sql.includes('FROM milk_entries')
+        ? [{ cid: 'c1', d: '2026-11-05', liters: '2.00', total: '120.00' }]
+        : [],
+    );
     mockEntityManager.getConnection = vi.fn(() => ({ execute }));
     mockEntriesRepo.find.mockResolvedValue([
       {
@@ -311,7 +313,11 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(bills[0].thisMonthPaid).toBe(60);
     expect(bills[0].thisMonthDue).toBe(60);
     expect(bills[0].hasPayment).toBe(true);
-    expect(execute.mock.calls[0][1]).toEqual(['d1', '2026-11-01', 'd1', '2026-11-01', '2026-11-30']);
+    // milk (past, month) then other items (past, month)
+    expect(execute.mock.calls[0][1]).toEqual([
+      'd1', '2026-11-01', 'd1', '2026-11-01', '2026-11-30',
+      'd1', '2026-11-01', 'd1', '2026-11-01', '2026-11-30',
+    ]);
 
     const singleBill = await service.getCustomerBillSummary('u1', 'c1', 2026, 11);
     expect(singleBill.customerId).toBe('c1');
@@ -339,6 +345,47 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(bill.thisMonthBill).toBe(120);
     expect(bill.pastMonthsDue).toBe(1800);
     expect(bill.netBalanceDue).toBe(1920);
+  });
+
+  it('bills other items separately from milk but includes them in dues', async () => {
+    const fakeUser = { uid: 'u1' };
+    const fakeDistributor = { did: 'd1', user: fakeUser };
+    const fakeCustomer = { cid: 'c1', name: 'Ramesh', uniqueNumber: '1', price: 60, liters: 2 };
+    mockUsersRepo.findOne.mockResolvedValue(fakeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
+    mockCustomersRepo.find.mockResolvedValue([fakeCustomer]);
+    mockCustomersRepo.findOne.mockResolvedValue(fakeCustomer);
+    mockPaymentsRepo.find.mockResolvedValue([]);
+    mockEntriesRepo.find.mockResolvedValue([
+      { entryDate: '2026-11-05', liters: 2, price: 60, total: 120 },
+    ]);
+    mockEntityManager.getConnection = vi.fn(() => ({
+      execute: vi.fn(async (sql: string) =>
+        sql.startsWith('SELECT id, to_char')
+          ? [
+              { id: 'o0', d: '2026-10-20', name: 'Curd', amount: '40.00' },
+              { id: 'o1', d: '2026-11-06', name: 'Ghee', amount: '550.00' },
+            ]
+          : [
+              { cid: 'c1', d: '2026-10-01', liters: '0', total: '40.00', kind: 'other' },
+              { cid: 'c1', d: '2026-11-05', liters: '2.00', total: '120.00', kind: 'milk' },
+              { cid: 'c1', d: '2026-11-06', liters: '0', total: '550.00', kind: 'other_item', id: 'o1', name: 'Ghee' },
+            ],
+      ),
+    }));
+
+    const expectItems = (bill: any) => {
+      expect(bill.milkBill).toBe(120);
+      expect(bill.otherItemsTotal).toBe(550);
+      expect(bill.otherItems).toEqual([{ id: 'o1', entryDate: '2026-11-06', name: 'Ghee', amount: 550 }]);
+      expect(bill.thisMonthBill).toBe(670);
+      expect(bill.thisMonthLiters).toBe(2);
+      expect(bill.activeDays).toBe(1);
+      expect(bill.pastMonthsDue).toBe(40); // last month's curd still owed
+      expect(bill.netBalanceDue).toBe(710);
+    };
+    expectItems((await service.getMonthlyBillsSummary('u1', 2026, 11))[0]);
+    expectItems(await service.getCustomerBillSummary('u1', 'c1', 2026, 11));
   });
 
   it('scanCards rejects blank/invalid cards with no customer name', async () => {

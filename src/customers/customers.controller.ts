@@ -5,6 +5,7 @@ import {
   Get,
   Logger,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -19,6 +20,7 @@ import { BulkCreateCustomersDto } from './dto/bulk-create-customers.dto.js';
 import { ScanCardsDto } from './dto/scan-cards.dto.js';
 import { CreateMilkEntryDto } from './dto/create-milk-entry.dto.js';
 import { CreatePaymentEntryDto } from './dto/create-payment-entry.dto.js';
+import { CreateOtherItemDto } from './dto/create-other-item.dto.js';
 import { UpdateCustomerDto } from './dto/update-customer.dto.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
 import { CustomersService } from './customers.service.js';
@@ -73,6 +75,24 @@ export class CustomersController {
     @Body() dto: CreateMilkEntryDto,
   ) {
     return this.customersService.createEntry(request.user.sub, customerId, dto);
+  }
+
+  @Post(':customerId/other-items')
+  addOtherItem(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Body() dto: CreateOtherItemDto,
+  ) {
+    return this.customersService.addOtherItem(request.user.sub, customerId, dto);
+  }
+
+  @Delete(':customerId/other-items/:itemId')
+  deleteOtherItem(
+    @Req() request: AuthenticatedRequest,
+    @Param('customerId', ParseUUIDPipe) customerId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+  ) {
+    return this.customersService.deleteOtherItem(request.user.sub, customerId, itemId);
   }
 
   @Get('bootstrap')

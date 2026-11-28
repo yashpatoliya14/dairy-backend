@@ -62,6 +62,21 @@ export async function runMigration() {
     ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
     ALTER TABLE public.users ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true;
 
+    -- Other items (ghee, paneer...) bought alongside milk, billed separately per month
+    ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS other_items_enabled boolean NOT NULL DEFAULT false;
+    CREATE TABLE IF NOT EXISTS public.other_item_entries (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      cid uuid NOT NULL REFERENCES public.customers(cid) ON DELETE CASCADE,
+      did uuid NOT NULL REFERENCES public.distributors(did) ON DELETE CASCADE,
+      uid uuid NOT NULL REFERENCES public.users(uid) ON DELETE CASCADE,
+      entry_date date NOT NULL,
+      name varchar(120) NOT NULL,
+      amount numeric(12, 2) NOT NULL CHECK (amount >= 0),
+      created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_other_items_dist_date ON public.other_item_entries (did, entry_date);
+    CREATE INDEX IF NOT EXISTS idx_other_items_cust_date ON public.other_item_entries (cid, entry_date);
+
     -- Ensure milk_entries cascades on customer delete
     ALTER TABLE public.milk_entries DROP CONSTRAINT IF EXISTS milk_entries_cid_foreign;
     ALTER TABLE public.milk_entries ADD CONSTRAINT milk_entries_cid_foreign FOREIGN KEY (cid) REFERENCES public.customers(cid) ON DELETE CASCADE;

@@ -1,5 +1,5 @@
 ﻿import { Body, Get, Patch, Req, UseGuards, Controller } from '@nestjs/common';
-import { IsNumber, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, Min } from 'class-validator';
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -15,6 +15,10 @@ class UpdateSettingsDto {
   @IsNumber()
   @Min(0)
   defaultPrice?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  otherItemsEnabled?: boolean;
 }
 
 type AuthenticatedRequest = Request & { user: AuthenticatedUser };

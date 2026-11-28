@@ -24,6 +24,19 @@ import { SettingsService } from '../settings/settings.service.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { calculateCustomerLedger, calculateEntryTotal, roundToCurrency, type RawMilkRecord } from './billing.utils.js';
+import type { CreateOtherItemDto } from './dto/create-other-item.dto.js';
+
+type LedgerRow = {
+  cid: string;
+  d: string;
+  liters: string | number;
+  total: string | number;
+  kind?: 'milk' | 'other' | 'other_item';
+  id?: string | null;
+  name?: string | null;
+};
+
+export type OtherItem = { id: string; entryDate: string; name: string; amount: number };
 
 @Injectable()
 export class CustomersService {
@@ -770,10 +783,11 @@ export class CustomersService {
     const curYear = now.getFullYear();
     const curMonth = now.getMonth() + 1;
 
-    const [entriesMap, allPayments] = await Promise.all([
-      this.ledgerEntriesByCustomer(distributor.did, curYear, curMonth).catch(
-        () => new Map<string, RawMilkRecord[]>(),
-      ),
+    const [{ entries: entriesMap }, allPayments] = await Promise.all([
+      this.ledgerEntriesByCustomer(distributor.did, curYear, curMonth).catch(() => ({
+        entries: new Map<string, RawMilkRecord[]>(),
+        otherItems: new Map<string, OtherItem[]>(),
+      })),
       Promise.resolve(
         this.payments?.find
           ? this.payments.find(
@@ -1029,21 +1043,74 @@ export class CustomersService {
     const monthStart = `${year}-${mm}-01`;
     const monthEnd = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
     const conn = this.entries.getEntityManager().getConnection();
-    const rows = await conn.execute<Array<{ cid: string; d: string; liters: string | number; total: string | number }>>(
-      `SELECT cid, to_char(entry_date, 'YYYY-MM-01') AS d, SUM(liters) AS liters, SUM(total) AS total
+    // Other items join the ledger as liters=0 records: they add to each month's
+    // bill (and so to dues/payments) without touching liters or activeDays.
+    const rows = await conn.execute<Array<LedgerRow>>(
+      `SELECT cid, to_char(entry_date, 'YYYY-MM-01') AS d, SUM(liters) AS liters, SUM(total) AS total,
+              'milk' AS kind, NULL::uuid AS id, NULL::text AS name
          FROM milk_entries WHERE did = ? AND entry_date < ? GROUP BY cid, d
        UNION ALL
-       SELECT cid, to_char(entry_date, 'YYYY-MM-DD') AS d, liters, total
-         FROM milk_entries WHERE did = ? AND entry_date >= ? AND entry_date <= ?`,
-      [did, monthStart, did, monthStart, monthEnd],
+       SELECT cid, to_char(entry_date, 'YYYY-MM-DD') AS d, liters, total, 'milk', NULL, NULL
+         FROM milk_entries WHERE did = ? AND entry_date >= ? AND entry_date <= ?
+       UNION ALL
+       SELECT cid, to_char(entry_date, 'YYYY-MM-01') AS d, 0, SUM(amount), 'other', NULL, NULL
+         FROM other_item_entries WHERE did = ? AND entry_date < ? GROUP BY cid, d
+       UNION ALL
+       SELECT cid, to_char(entry_date, 'YYYY-MM-DD') AS d, 0, amount, 'other_item', id, name
+         FROM other_item_entries WHERE did = ? AND entry_date >= ? AND entry_date <= ?`,
+      [did, monthStart, did, monthStart, monthEnd, did, monthStart, did, monthStart, monthEnd],
     );
-    const map = new Map<string, RawMilkRecord[]>();
+    return this.groupLedgerRows(rows);
+  }
+
+  /** Splits ledger rows per customer: all records for the ledger, plus the target month's named items. */
+  private groupLedgerRows(rows: LedgerRow[]) {
+    const entries = new Map<string, RawMilkRecord[]>();
+    const otherItems = new Map<string, OtherItem[]>();
     for (const r of rows) {
-      if (!map.has(r.cid)) map.set(r.cid, []);
+      if (!entries.has(r.cid)) entries.set(r.cid, []);
       // total is NOT NULL in the schema, so price is never needed by the ledger here
-      map.get(r.cid)!.push({ entryDate: r.d, liters: Number(r.liters), price: 0, total: Number(r.total) });
+      entries.get(r.cid)!.push({ entryDate: r.d, liters: Number(r.liters), price: 0, total: Number(r.total) });
+      if (r.kind === 'other_item') {
+        if (!otherItems.has(r.cid)) otherItems.set(r.cid, []);
+        otherItems.get(r.cid)!.push({ id: String(r.id), entryDate: r.d, name: String(r.name), amount: Number(r.total) });
+      }
     }
-    return map;
+    for (const list of otherItems.values()) list.sort((a, b) => a.entryDate.localeCompare(b.entryDate));
+    return { entries, otherItems };
+  }
+
+  /** Bill fields that keep other items visibly separate from the milk amount. */
+  private otherItemsFields(ledger: { thisMonthBill: number }, items: OtherItem[]) {
+    const otherItemsTotal = roundToCurrency(items.reduce((sum, i) => sum + i.amount, 0));
+    return {
+      milkBill: roundToCurrency(ledger.thisMonthBill - otherItemsTotal),
+      otherItemsTotal,
+      otherItems: items,
+    };
+  }
+
+  async addOtherItem(userId: string, customerId: string, dto: CreateOtherItemDto) {
+    const customer = await this.customerFor(userId, customerId);
+    const distributor = await this.distributorFor(userId);
+    const entryDate = dto.entryDate.slice(0, 10);
+    const amount = roundToCurrency(dto.amount);
+    const rows = await this.entries.getEntityManager().getConnection().execute<Array<{ id: string }>>(
+      `INSERT INTO other_item_entries (cid, did, uid, entry_date, name, amount)
+       VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+      [customer.cid, distributor.did, userId, entryDate, dto.name, amount],
+    );
+    return { id: rows[0].id, entryDate, name: dto.name, amount };
+  }
+
+  async deleteOtherItem(userId: string, customerId: string, itemId: string) {
+    const customer = await this.customerFor(userId, customerId);
+    const rows = await this.entries.getEntityManager().getConnection().execute<Array<{ id: string }>>(
+      'DELETE FROM other_item_entries WHERE id = ? AND cid = ? RETURNING id',
+      [itemId, customer.cid],
+    );
+    if (rows.length === 0) throw new NotFoundException('Item not found');
+    return { success: true };
   }
 
   private async userFor(userId: string) {
@@ -1159,7 +1226,7 @@ export class CustomersService {
     const daysInTargetMonth = new Date(year, month, 0).getDate();
 
     // Past months arrive pre-summed from SQL; payments are one row per month so they stay as-is
-    const [entriesMap, allPayments] = await Promise.all([
+    const [{ entries: entriesMap, otherItems: otherItemsMap }, allPayments] = await Promise.all([
       this.ledgerEntriesByCustomer(distributor.did, year, month),
       this.payments
         .find(
@@ -1228,6 +1295,7 @@ export class CustomersService {
         paymentNote: ledger.paymentNote,
         paymentDate: ledger.paymentDate,
         hasPayment: ledger.hasPayment,
+        ...this.otherItemsFields(ledger, otherItemsMap.get(c.cid) ?? []),
         customer: {
           id: c.cid,
           name: c.name,
@@ -1254,8 +1322,9 @@ export class CustomersService {
       Date.UTC(year, month - 1, daysInTargetMonth, 23, 59, 59, 999),
     );
 
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
     // Fast targeted query for this single customer instead of loading the entire dairy table
-    const [entriesList, paymentsList] = await Promise.all([
+    const [entriesList, paymentsList, otherRows] = await Promise.all([
       this.entries.find({
         customer,
         entryDate: { $lte: targetMonthEnd },
@@ -1269,14 +1338,28 @@ export class CustomersService {
           ],
         })
         .catch(() => []),
+      this.entries.getEntityManager().getConnection().execute<
+        Array<{ id: string; d: string; name: string; amount: string | number }>
+      >(
+        `SELECT id, to_char(entry_date, 'YYYY-MM-DD') AS d, name, amount
+           FROM other_item_entries WHERE cid = ? AND entry_date <= ? ORDER BY entry_date, created_at`,
+        [customer.cid, `${monthKey}-${String(daysInTargetMonth).padStart(2, '0')}`],
+      ),
     ]);
 
-    const cEntries = (entriesList || []).map((e) => ({
+    const cEntries: RawMilkRecord[] = (entriesList || []).map((e) => ({
       entryDate: e.entryDate,
       liters: Number(e.liters ?? 0),
       price: Number(e.price ?? 0),
       total: e.total != null ? Number(e.total) : undefined,
     }));
+    // Other items count toward each month's bill as liters=0 records
+    for (const r of otherRows) {
+      cEntries.push({ entryDate: r.d, liters: 0, price: 0, total: Number(r.amount) });
+    }
+    const monthItems: OtherItem[] = otherRows
+      .filter((r) => r.d.startsWith(monthKey))
+      .map((r) => ({ id: r.id, entryDate: r.d, name: r.name, amount: Number(r.amount) }));
 
     const cPayments = (paymentsList || []).map((p) => ({
       year: p.year,
@@ -1320,6 +1403,7 @@ export class CustomersService {
       paymentNote: ledger.paymentNote,
       paymentDate: ledger.paymentDate,
       hasPayment: ledger.hasPayment,
+      ...this.otherItemsFields(ledger, monthItems),
       customer: {
         id: customer.cid,
         name: customer.name,
