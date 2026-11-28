@@ -30,29 +30,30 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.48',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.49',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 50,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 51,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.48',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.49',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.48 Update Available! 🚀',
+        'DairyDesk v1.0.49 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Much faster app: dashboard opens instantly from saved data\n' +
-          '• Milk entry saves confirm immediately\n' +
-          '• Smaller, compressed data downloads over mobile internet\n' +
-          '• Faster customer balances and monthly bills\n' +
-          '• Release APK: DairyDesk_v1.0.48_Update.apk',
+        '• Faster milk entry saving and daily summary\n' +
+          '• Loader shown while switching dashboard dates\n' +
+          '• Cleaner dashboard cards and new calendar design\n' +
+          '• Redesigned Add Customer page\n' +
+          '• Phone numbers with +91 are cleaned automatically\n' +
+          '• Release APK: DairyDesk_v1.0.49_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.48/DairyDesk_v1.0.48_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.49/DairyDesk_v1.0.49_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '63.0 MB',
       publishedAt: new Date().toISOString(),
     };

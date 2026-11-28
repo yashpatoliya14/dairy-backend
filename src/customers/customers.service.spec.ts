@@ -196,11 +196,10 @@ describe('CustomersService - Milk Entries & Card', () => {
     mockUsersRepo.findOne.mockResolvedValue(fakeUser);
     mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
     mockCustomersRepo.findOne.mockResolvedValue(fakeCustomer);
-    mockEntriesRepo.findOne.mockResolvedValue(null);
-    mockEntriesRepo.create.mockImplementation((data: any) => ({
-      ...data,
-      entryDate: '2026-10-15',
-    }));
+    const execute = vi.fn().mockResolvedValue([
+      { eid: 'e9', liters: '1.25', price: '62.50', total: '78.13' },
+    ]);
+    mockEntityManager.getConnection = vi.fn(() => ({ execute }));
 
     // 1.25 L @ 62.50 = 78.125 -> rounds to 78.13
     const result = await service.createEntry('u1', 'c1', {
@@ -208,14 +207,13 @@ describe('CustomersService - Milk Entries & Card', () => {
       liters: 1.25,
       price: 62.5,
     });
-    expect(result.total).toBe(78.13);
-    expect(mockEntriesRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        liters: 1.25,
-        price: 62.5,
-        total: 78.13,
-      }),
-    );
+    expect(result).toEqual({ id: 'e9', entryDate: '2026-10-15', liters: 1.25, price: 62.5, total: 78.13 });
+    const [sql, params] = execute.mock.calls[0];
+    expect(params.slice(1)).toEqual(['c1', 'd1', 'u1', '2026-10-15', 1.25, 62.5, 78.13]);
+    // default mode adds to an existing same-day entry; replace overwrites
+    expect(sql).toContain('milk_entries.liters + EXCLUDED.liters');
+    await service.createEntry('u1', 'c1', { entryDate: '2026-10-15', liters: 2, price: 60, mode: 'replace' });
+    expect(execute.mock.calls[1][0]).not.toContain('milk_entries.liters + EXCLUDED.liters');
   });
 
   it('deletes customer along with payments and entries without altering other numbers', async () => {

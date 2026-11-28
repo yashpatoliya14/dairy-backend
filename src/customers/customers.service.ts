@@ -27,6 +27,8 @@ import { calculateCustomerLedger, calculateEntryTotal, roundToCurrency, type Raw
 
 @Injectable()
 export class CustomersService {
+  private readonly didByUser = new Map<string, string>();
+
   constructor(
     @InjectRepository(Customer)
     private readonly customers: EntityRepository<Customer>,
@@ -572,54 +574,37 @@ export class CustomersService {
     const customer = await this.customerFor(userId, customerId);
     const distributor = await this.distributorFor(userId);
     const cleanDateStr = (dto.entryDate || '').slice(0, 10);
-    const entryDate = new Date(`${cleanDateStr}T00:00:00.000Z`);
     const liters = roundToCurrency(Number(dto.liters) || 0);
     const price = roundToCurrency(Number(dto.price) || 0);
     const total = calculateEntryTotal(liters, price);
 
-    const em = this.entries.getEntityManager();
-    const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
-    let existing: MilkEntry | null = null;
-    if (conn) {
-      const existingRaw = await conn.execute<Array<{ eid: string }>>(
-        'SELECT eid FROM milk_entries WHERE cid = ? AND entry_date = ? LIMIT 1',
-        [customer.cid, cleanDateStr],
-      );
-      if (existingRaw.length > 0) {
-        existing = await this.entries.findOne({ eid: existingRaw[0].eid });
-      }
-    } else {
-      existing = await this.entries.findOne({ customer, entryDate });
-    }
-
-    if (existing) {
-      if (dto.mode === 'replace') {
-        existing.liters = liters;
-        existing.price = price;
-        existing.total = total;
-      } else {
-        // Default mode 'add': sum newly delivered milk with existing entry for today (e.g. 5 + 3 = 8)
-        const combinedLiters = roundToCurrency(Number(existing.liters) + liters);
-        existing.liters = combinedLiters;
-        existing.price = price;
-        existing.total = calculateEntryTotal(combinedLiters, price);
-      }
-      await em.flush();
-      return this.serializeEntry(existing);
-    }
-    const entry = this.entries.create({
-      eid: randomUUID(),
-      customer,
-      distributor,
-      user: await this.userFor(userId),
-      entryDate,
-      liters,
-      price,
-      total,
-    });
-    em.persist(entry);
-    await em.flush();
-    return this.serializeEntry(entry);
+    // One atomic upsert on the (cid, entry_date) unique index replaces
+    // select + load + transaction (~4 sequential DB round trips).
+    // Default mode 'add' sums milk delivered again the same day (e.g. 5 + 3 = 8).
+    const newLiters = dto.mode === 'replace'
+      ? 'EXCLUDED.liters'
+      : 'milk_entries.liters + EXCLUDED.liters';
+    const rows = await this.entries.getEntityManager().getConnection().execute<
+      Array<{ eid: string; liters: string | number; price: string | number; total: string | number }>
+    >(
+      `INSERT INTO milk_entries (eid, cid, did, uid, entry_date, liters, price, total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (cid, entry_date) DO UPDATE SET
+         liters = ${newLiters},
+         price = EXCLUDED.price,
+         total = CASE WHEN ${newLiters} > 0 AND EXCLUDED.price > 0
+                      THEN ROUND((${newLiters}) * EXCLUDED.price, 2) ELSE 0 END
+       RETURNING eid, liters, price, total`,
+      [randomUUID(), customer.cid, distributor.did, userId, cleanDateStr, liters, price, total],
+    );
+    const row = rows[0];
+    return {
+      id: row.eid,
+      entryDate: cleanDateStr,
+      liters: Number(row.liters),
+      price: Number(row.price),
+      total: Number(row.total),
+    };
   }
 
   async listEntries(userId: string, customerId: string, month?: string) {
@@ -1015,12 +1000,17 @@ export class CustomersService {
         'Your account has been deactivated. Please contact support.',
       );
     }
-    const distributor = await this.distributors.findOne({
-      user,
-    });
+    // A user's distributor never changes. Looking it up by primary key lets MikroORM
+    // serve it from the request's identity map (the auth guard already loaded it)
+    // instead of running another ~100ms query each call.
+    const cachedDid = this.didByUser.get(userId);
+    const distributor = cachedDid
+      ? await this.distributors.findOne({ did: cachedDid })
+      : await this.distributors.findOne({ user });
     if (!distributor) {
       throw new NotFoundException('Distributor account not found');
     }
+    this.didByUser.set(userId, distributor.did);
     if (distributor.isActive === false) {
       throw new UnauthorizedException(
         'Your distributor account has been deactivated. Please contact support.',

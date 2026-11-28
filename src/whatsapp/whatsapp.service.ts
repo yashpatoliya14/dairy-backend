@@ -825,18 +825,10 @@ export class WhatsAppService {
         ? dateStr
         : new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
-    const allCustomers = await this.customers.find(
+    const customersQuery = this.customers.find(
       { distributor },
       { orderBy: { uniqueNumber: 'ASC' } },
     );
-    allCustomers.sort((a, b) => {
-      const numA = Number.parseInt(String(a.uniqueNumber || '').replace(/\D/g, ''), 10);
-      const numB = Number.parseInt(String(b.uniqueNumber || '').replace(/\D/g, ''), 10);
-      if (Number.isInteger(numA) && Number.isInteger(numB)) {
-        return numA - numB;
-      }
-      return (a.uniqueNumber || '').localeCompare(b.uniqueNumber || '', undefined, { numeric: true });
-    });
 
     const em = this.customers.getEntityManager();
     const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
@@ -849,8 +841,12 @@ export class WhatsAppService {
     }> = [];
     let logs: Array<any> = [];
 
+    let allCustomers: Awaited<typeof customersQuery>;
     if (conn) {
-      entries = await conn.execute<
+      // Independent reads run in parallel: one DB round trip instead of three
+      [allCustomers, entries, logs] = await Promise.all([
+      customersQuery,
+      conn.execute<
         Array<{
           eid: string;
           cid: string;
@@ -861,8 +857,8 @@ export class WhatsAppService {
       >(
         'SELECT eid, cid, liters, price, total FROM milk_entries WHERE did = ? AND entry_date = ?',
         [distributor.did, effectiveDateStr],
-      );
-      logs = await conn.execute<
+      ),
+      conn.execute<
         Array<{
           id: string;
           cid: string;
@@ -876,8 +872,10 @@ export class WhatsAppService {
       >(
         'SELECT id, cid, status, attempt_count, last_attempted_at, message_content, provider_message_id, error_message FROM daily_message_logs WHERE did = ? AND entry_date = ?',
         [distributor.did, effectiveDateStr],
-      );
+      ),
+      ]);
     } else {
+      allCustomers = await customersQuery;
       const ormEntries = await this.milkEntries.find({ distributor });
       entries = ormEntries
         .filter(
@@ -912,6 +910,14 @@ export class WhatsAppService {
           error_message: l.errorMessage,
         }));
     }
+    allCustomers.sort((a, b) => {
+      const numA = Number.parseInt(String(a.uniqueNumber || '').replace(/\D/g, ''), 10);
+      const numB = Number.parseInt(String(b.uniqueNumber || '').replace(/\D/g, ''), 10);
+      if (Number.isInteger(numA) && Number.isInteger(numB)) {
+        return numA - numB;
+      }
+      return (a.uniqueNumber || '').localeCompare(b.uniqueNumber || '', undefined, { numeric: true });
+    });
     const entryByCid = new Map(entries.map((e) => [e.cid, e]));
     const logByCid = new Map(logs.map((l) => [l.cid, l]));
 
