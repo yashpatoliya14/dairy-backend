@@ -392,4 +392,47 @@ describe('Central Billing Calculation & Accounting Rules', () => {
       expect(summary.remainingDue).toBe(2576.4);
     });
   });
+
+  // The customer page shows exactly these carry-forward flows
+  describe('month-to-month carry forward', () => {
+    const bill = (date: string, total: number) => ({ entryDate: date, liters: 0, price: 0, total });
+    const paid = (month: number, amount: number) => ({ year: 2026, month, receivedAmount: amount });
+
+    it('overpayment becomes advance used in the next month', () => {
+      // Nov bill 3000, paid 5000 -> 2000 advance; Dec bill 3000 -> 1000 due
+      const nov = calculateCustomerLedger({ entries: [bill('2026-11-10', 3000)], payments: [paid(11, 5000)], targetYear: 2026, targetMonth: 11 });
+      expect(nov.netAdvance).toBe(2000);
+      expect(nov.netBalanceDue).toBe(0);
+      const dec = calculateCustomerLedger({
+        entries: [bill('2026-11-10', 3000), bill('2026-12-10', 3000)],
+        payments: [paid(11, 5000)],
+        targetYear: 2026,
+        targetMonth: 12,
+      });
+      expect(dec.grossPastAdvance).toBe(2000);
+      expect(dec.netBalanceDue).toBe(1000);
+    });
+
+    it('underpayment is carried as due into the next month', () => {
+      // Nov bill 3000, paid 2000 -> 1000 due shows as previous due in Dec
+      const nov = calculateCustomerLedger({ entries: [bill('2026-11-10', 3000)], payments: [paid(11, 2000)], targetYear: 2026, targetMonth: 11 });
+      expect(nov.netBalanceDue).toBe(1000);
+      const dec = calculateCustomerLedger({ entries: [bill('2026-11-10', 3000)], payments: [paid(11, 2000)], targetYear: 2026, targetMonth: 12 });
+      expect(dec.grossPastDue).toBe(1000);
+      expect(dec.netBalanceDue).toBe(1000);
+    });
+
+    it('payment clears the older month first', () => {
+      // Oct due 1000 + Nov bill 3000
+      const entries = [bill('2026-10-10', 1000), bill('2026-11-10', 3000)];
+      const partial = calculateCustomerLedger({ entries, payments: [paid(11, 3000)], targetYear: 2026, targetMonth: 11 });
+      expect(partial.grossPastDue).toBe(1000);
+      expect(partial.pastMonthsDue).toBe(0); // Oct filled first
+      expect(partial.thisMonthDue).toBe(1000); // 1000 left on Nov
+      expect(partial.netBalanceDue).toBe(1000);
+      const full = calculateCustomerLedger({ entries, payments: [paid(11, 4000)], targetYear: 2026, targetMonth: 11 });
+      expect(full.netBalanceDue).toBe(0);
+      expect(full.netAdvance).toBe(0); // settled
+    });
+  });
 });
