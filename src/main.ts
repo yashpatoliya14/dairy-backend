@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { RequestLoggingMiddleware } from './common/request-logging.middleware.js';
 import { runMigration } from './migrations/run-migration.js';
 import express from 'express';
+import compression from 'compression';
 
 async function bootstrap() {
   try {
@@ -13,6 +14,8 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+  // gzip JSON responses: customer lists shrink ~5-10x over mobile data
+  app.use(compression());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
   const requestLogger = new RequestLoggingMiddleware();

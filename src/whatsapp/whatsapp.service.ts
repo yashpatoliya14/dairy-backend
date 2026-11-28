@@ -859,8 +859,8 @@ export class WhatsAppService {
           total: number | string;
         }>
       >(
-        'SELECT eid, cid, liters, price, total FROM milk_entries WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
-        [distributor.did, effectiveDateStr, effectiveDateStr],
+        'SELECT eid, cid, liters, price, total FROM milk_entries WHERE did = ? AND entry_date = ?',
+        [distributor.did, effectiveDateStr],
       );
       logs = await conn.execute<
         Array<{
@@ -874,8 +874,8 @@ export class WhatsAppService {
           error_message?: string | null;
         }>
       >(
-        'SELECT id, cid, status, attempt_count, last_attempted_at, message_content, provider_message_id, error_message FROM daily_message_logs WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
-        [distributor.did, effectiveDateStr, effectiveDateStr],
+        'SELECT id, cid, status, attempt_count, last_attempted_at, message_content, provider_message_id, error_message FROM daily_message_logs WHERE did = ? AND entry_date = ?',
+        [distributor.did, effectiveDateStr],
       );
     } else {
       const ormEntries = await this.milkEntries.find({ distributor });
@@ -1036,8 +1036,8 @@ export class WhatsAppService {
     let log: DailyMessageLog | null = null;
     if (conn) {
       const rawLogs = await conn.execute<Array<{ id: string }>>(
-        'SELECT id FROM daily_message_logs WHERE cid = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?)) LIMIT 1',
-        [customer.cid, cleanDateStr, cleanDateStr],
+        'SELECT id FROM daily_message_logs WHERE cid = ? AND entry_date = ? LIMIT 1',
+        [customer.cid, cleanDateStr],
       );
       if (rawLogs.length > 0) {
         log = await this.messageLogs.findOne({ id: rawLogs[0].id });
@@ -1158,8 +1158,8 @@ export class WhatsAppService {
     let rawEntries: Array<{ eid: string; liters: number | string; price: number | string; total: number | string }> = [];
     if (conn) {
       rawEntries = await conn.execute(
-        'SELECT eid, liters, price, total FROM milk_entries WHERE cid = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?)) LIMIT 1',
-        [customer.cid, cleanDateStr, cleanDateStr],
+        'SELECT eid, liters, price, total FROM milk_entries WHERE cid = ? AND entry_date = ? LIMIT 1',
+        [customer.cid, cleanDateStr],
       );
     } else {
       const found = await this.milkEntries.findOne({
@@ -1432,8 +1432,8 @@ export class WhatsAppService {
       const conn = typeof em.getConnection === 'function' ? em.getConnection() : null;
       if (distributor && user && conn) {
         const existingLogs = await conn.execute<Array<{ id: string; cid: string; status: string }>>(
-          'SELECT id, cid, status FROM daily_message_logs WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
-          [distributor.did, cleanDateStr, cleanDateStr],
+          'SELECT id, cid, status FROM daily_message_logs WHERE did = ? AND entry_date = ?',
+          [distributor.did, cleanDateStr],
         );
         const logMap = new Map(existingLogs.map((l) => [l.cid, l]));
 

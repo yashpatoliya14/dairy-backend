@@ -30,28 +30,29 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.47',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.48',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 49,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 50,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.47',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.48',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.47 Update Available! 🚀',
+        'DairyDesk v1.0.48 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Ultra-responsive instant loader without GPU blur latency\n' +
-          '• Background prehydration for zero-flash dashboard navigation\n' +
-          '• Streamlined milk collection & monthly entry caching\n' +
-          '• Release APK: DairyDesk_v1.0.47_Update.apk',
+        '• Much faster app: dashboard opens instantly from saved data\n' +
+          '• Milk entry saves confirm immediately\n' +
+          '• Smaller, compressed data downloads over mobile internet\n' +
+          '• Faster customer balances and monthly bills\n' +
+          '• Release APK: DairyDesk_v1.0.48_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.47/DairyDesk_v1.0.47_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.48/DairyDesk_v1.0.48_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '63.0 MB',
       publishedAt: new Date().toISOString(),
     };

@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { SettingsService } from '../settings/settings.service.js';
 import { SendWhatsAppDto } from './dto/send-whatsapp.dto.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
-import { calculateCustomerLedger, calculateEntryTotal, roundToCurrency } from './billing.utils.js';
+import { calculateCustomerLedger, calculateEntryTotal, roundToCurrency, type RawMilkRecord } from './billing.utils.js';
 
 @Injectable()
 export class CustomersService {
@@ -582,8 +582,8 @@ export class CustomersService {
     let existing: MilkEntry | null = null;
     if (conn) {
       const existingRaw = await conn.execute<Array<{ eid: string }>>(
-        'SELECT eid FROM milk_entries WHERE cid = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?)) LIMIT 1',
-        [customer.cid, cleanDateStr, cleanDateStr],
+        'SELECT eid FROM milk_entries WHERE cid = ? AND entry_date = ? LIMIT 1',
+        [customer.cid, cleanDateStr],
       );
       if (existingRaw.length > 0) {
         existing = await this.entries.findOne({ eid: existingRaw[0].eid });
@@ -770,8 +770,8 @@ export class CustomersService {
     if (conn) {
       try {
         todayEntries = await conn.execute(
-          'SELECT cid, liters, price, total FROM milk_entries WHERE did = ? AND (entry_date = ? OR DATE(entry_date) = DATE(?))',
-          [distributor.did, todayStr, todayStr],
+          'SELECT cid, liters, price, total FROM milk_entries WHERE did = ? AND entry_date = ?',
+          [distributor.did, todayStr],
         );
       } catch {
         todayEntries = [];
@@ -784,17 +784,11 @@ export class CustomersService {
     const now = new Date();
     const curYear = now.getFullYear();
     const curMonth = now.getMonth() + 1;
-    const daysInCurMonth = new Date(curYear, curMonth, 0).getDate();
-    const curMonthEnd = new Date(Date.UTC(curYear, curMonth - 1, daysInCurMonth, 23, 59, 59, 999));
 
-    const [allEntries, allPayments] = await Promise.all([
-      Promise.resolve(
-        this.entries?.find
-          ? this.entries.find(
-              { distributor, entryDate: { $lte: curMonthEnd } },
-            )
-          : [],
-      ).catch(() => []),
+    const [entriesMap, allPayments] = await Promise.all([
+      this.ledgerEntriesByCustomer(distributor.did, curYear, curMonth).catch(
+        () => new Map<string, RawMilkRecord[]>(),
+      ),
       Promise.resolve(
         this.payments?.find
           ? this.payments.find(
@@ -810,20 +804,7 @@ export class CustomersService {
       ).catch(() => []),
     ]);
 
-    const entriesList = Array.isArray(allEntries) ? allEntries : [];
     const paymentsList = Array.isArray(allPayments) ? allPayments : [];
-
-    const entriesMap = new Map<string, Array<{ entryDate: Date | string; liters: number; price: number; total?: number }>>();
-    for (const e of entriesList) {
-      const cid = this.extractCustomerId(e.customer);
-      if (!entriesMap.has(cid)) entriesMap.set(cid, []);
-      entriesMap.get(cid)!.push({
-        entryDate: e.entryDate,
-        liters: Number(e.liters ?? 0),
-        price: Number(e.price ?? 0),
-        total: e.total != null ? Number(e.total) : undefined,
-      });
-    }
 
     const paymentsMap = new Map<string, Array<{ year: number; month: number; receivedAmount: number; note?: string; receivedDate?: Date | string | null }>>();
     for (const p of paymentsList) {
@@ -1048,6 +1029,33 @@ export class CustomersService {
     return distributor;
   }
 
+  /**
+   * Milk records for the ledger without loading full history as entities:
+   * months before the target are summed in SQL (one row per customer-month),
+   * the target month keeps raw daily rows so activeDays stays exact.
+   */
+  private async ledgerEntriesByCustomer(did: string, year: number, month: number) {
+    const mm = String(month).padStart(2, '0');
+    const monthStart = `${year}-${mm}-01`;
+    const monthEnd = `${year}-${mm}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+    const conn = this.entries.getEntityManager().getConnection();
+    const rows = await conn.execute<Array<{ cid: string; d: string; liters: string | number; total: string | number }>>(
+      `SELECT cid, to_char(entry_date, 'YYYY-MM-01') AS d, SUM(liters) AS liters, SUM(total) AS total
+         FROM milk_entries WHERE did = ? AND entry_date < ? GROUP BY cid, d
+       UNION ALL
+       SELECT cid, to_char(entry_date, 'YYYY-MM-DD') AS d, liters, total
+         FROM milk_entries WHERE did = ? AND entry_date >= ? AND entry_date <= ?`,
+      [did, monthStart, did, monthStart, monthEnd],
+    );
+    const map = new Map<string, RawMilkRecord[]>();
+    for (const r of rows) {
+      if (!map.has(r.cid)) map.set(r.cid, []);
+      // total is NOT NULL in the schema, so price is never needed by the ledger here
+      map.get(r.cid)!.push({ entryDate: r.d, liters: Number(r.liters), price: 0, total: Number(r.total) });
+    }
+    return map;
+  }
+
   private async userFor(userId: string) {
     const user = await this.users.findOne({ uid: userId });
     if (!user) {
@@ -1119,9 +1127,9 @@ export class CustomersService {
   }
 
   async getBootstrapData(userId: string, dateStr?: string) {
-    const user = await this.userFor(userId);
-    const distributor = await this.distributorFor(userId);
-    const [settings, customerList, todaySummary] = await Promise.all([
+    const [user, distributor, settings, customerList, todaySummary] = await Promise.all([
+      this.userFor(userId),
+      this.distributorFor(userId),
       this.settingsService.get(userId),
       this.list(userId),
       this.whatsappService.getDailySummary(userId, dateStr),
@@ -1159,17 +1167,10 @@ export class CustomersService {
     });
 
     const daysInTargetMonth = new Date(year, month, 0).getDate();
-    const targetMonthEnd = new Date(Date.UTC(year, month - 1, daysInTargetMonth, 23, 59, 59, 999));
 
-    // Load all historical entries and payments up to the target month for exact chronological ledger calculation
-    const [allEntries, allPayments] = await Promise.all([
-      this.entries.find(
-        {
-          distributor,
-          entryDate: { $lte: targetMonthEnd },
-        },
-        { populate: ['customer'] },
-      ),
+    // Past months arrive pre-summed from SQL; payments are one row per month so they stay as-is
+    const [entriesMap, allPayments] = await Promise.all([
+      this.ledgerEntriesByCustomer(distributor.did, year, month),
       this.payments
         .find(
           {
@@ -1184,20 +1185,7 @@ export class CustomersService {
         .catch(() => []),
     ]);
 
-    const entriesList = Array.isArray(allEntries) ? allEntries : [];
     const paymentsList = Array.isArray(allPayments) ? allPayments : [];
-
-    const entriesMap = new Map<string, Array<{ entryDate: Date | string; liters: number; price: number; total?: number }>>();
-    for (const e of entriesList) {
-      const cid = this.extractCustomerId(e.customer);
-      if (!entriesMap.has(cid)) entriesMap.set(cid, []);
-      entriesMap.get(cid)!.push({
-        entryDate: e.entryDate,
-        liters: Number(e.liters ?? 0),
-        price: Number(e.price ?? 0),
-        total: e.total != null ? Number(e.total) : undefined,
-      });
-    }
 
     const paymentsMap = new Map<string, Array<{ year: number; month: number; receivedAmount: number; note?: string; receivedDate?: Date | string | null }>>();
     for (const p of paymentsList) {

@@ -281,6 +281,11 @@ describe('CustomersService - Milk Entries & Card', () => {
     mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
     mockCustomersRepo.find.mockResolvedValue([fakeCustomer]);
     mockCustomersRepo.findOne.mockResolvedValue(fakeCustomer);
+    // Bulk summary reads SQL rows (pg returns decimals as strings)
+    const execute = vi.fn().mockResolvedValue([
+      { cid: 'c1', d: '2026-11-05', liters: '2.00', total: '120.00' },
+    ]);
+    mockEntityManager.getConnection = vi.fn(() => ({ execute }));
     mockEntriesRepo.find.mockResolvedValue([
       {
         customer: fakeCustomer,
@@ -308,12 +313,34 @@ describe('CustomersService - Milk Entries & Card', () => {
     expect(bills[0].thisMonthPaid).toBe(60);
     expect(bills[0].thisMonthDue).toBe(60);
     expect(bills[0].hasPayment).toBe(true);
+    expect(execute.mock.calls[0][1]).toEqual(['d1', '2026-11-01', 'd1', '2026-11-01', '2026-11-30']);
 
     const singleBill = await service.getCustomerBillSummary('u1', 'c1', 2026, 11);
     expect(singleBill.customerId).toBe('c1');
     expect(singleBill.thisMonthPaid).toBe(60);
     expect(singleBill.thisMonthDue).toBe(60);
     expect(singleBill.hasPayment).toBe(true);
+  });
+
+  it('carries pre-summed past months into the monthly bill', async () => {
+    const fakeUser = { uid: 'u1' };
+    const fakeDistributor = { did: 'd1', user: fakeUser };
+    const fakeCustomer = { cid: 'c1', name: 'Ramesh', uniqueNumber: '1', price: 60, liters: 2 };
+    mockUsersRepo.findOne.mockResolvedValue(fakeUser);
+    mockDistributorsRepo.findOne.mockResolvedValue(fakeDistributor);
+    mockCustomersRepo.find.mockResolvedValue([fakeCustomer]);
+    mockPaymentsRepo.find.mockResolvedValue([]);
+    mockEntityManager.getConnection = vi.fn(() => ({
+      execute: vi.fn().mockResolvedValue([
+        { cid: 'c1', d: '2026-10-01', liters: '30.00', total: '1800.00' },
+        { cid: 'c1', d: '2026-11-05', liters: '2.00', total: '120.00' },
+      ]),
+    }));
+
+    const [bill] = await service.getMonthlyBillsSummary('u1', 2026, 11);
+    expect(bill.thisMonthBill).toBe(120);
+    expect(bill.pastMonthsDue).toBe(1800);
+    expect(bill.netBalanceDue).toBe(1920);
   });
 
   it('scanCards rejects blank/invalid cards with no customer name', async () => {
