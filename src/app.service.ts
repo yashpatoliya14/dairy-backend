@@ -30,29 +30,28 @@ export class AppService {
   constructor(private readonly configService?: ConfigService) {
     this.versionConfig = {
       latestVersion:
-        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.46',
+        this.configService?.get<string>('APP_LATEST_VERSION') ?? '1.0.47',
       buildNumber: Number(
-        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 48,
+        this.configService?.get<string>('APP_BUILD_NUMBER') ?? 49,
       ),
       minSupportedVersion:
-        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.46',
+        this.configService?.get<string>('APP_MIN_SUPPORTED_VERSION') ?? '1.0.47',
       forceUpdate:
         this.configService?.get<string>('APP_FORCE_UPDATE') === 'false'
           ? false
           : true,
       title:
         this.configService?.get<string>('APP_UPDATE_TITLE') ??
-        'DairyDesk v1.0.46 Update Available! 🚀',
+        'DairyDesk v1.0.47 Update Available! 🚀',
       releaseNotes:
         this.configService?.get<string>('APP_RELEASE_NOTES') ??
-        '• Multilingual Card OCR: Gujarati, Hindi & English name, mobile, and milk liters detection with dairy defaults fallback\n' +
-          '• Strict Bulk Validation & Static Numbers: rejects unreadable/non-card screenshots and maintains sequential customer numbers\n' +
-          '• Bulk Create Transactional Safety: eliminates 500 unique-constraint failures on duplicate/reused numbers\n' +
-          '• Reliable Daily Reminders: fixed local IST timezone & exact alarm scheduling + maximum 7 reminders limit\n' +
-          '• Release APK: DairyDesk_v1.0.46_Update.apk',
+        '• Ultra-responsive instant loader without GPU blur latency\n' +
+          '• Background prehydration for zero-flash dashboard navigation\n' +
+          '• Streamlined milk collection & monthly entry caching\n' +
+          '• Release APK: DairyDesk_v1.0.47_Update.apk',
       downloadUrl:
         this.configService?.get<string>('APP_DOWNLOAD_URL') ??
-        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.46/DairyDesk_v1.0.46_Update.apk',
+        'https://github.com/yashpatoliya14/dairy/releases/download/v1.0.47/DairyDesk_v1.0.47_Update.apk',
       apkSize: this.configService?.get<string>('APP_APK_SIZE') ?? '63.0 MB',
       publishedAt: new Date().toISOString(),
     };
