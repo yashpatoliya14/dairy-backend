@@ -195,7 +195,11 @@ export class CustomersService {
       return (str || '').replace(/[૦-૯०-९]/g, (ch) => map[ch] || ch);
     };
 
-    const text = convertDigits(rawOcrText || '');
+    const text = convertDigits(rawOcrText || '')
+      // Tesseract reads Gujarati digit ૨ as the identical-looking letter ર next to digits or standalone
+      .replace(/(?<=\d)ર|ર(?=\d)|(?<![઀-૿])ર(?![઀-૿.])/g, '2')
+      // Gujarati visarga ઃ is commonly written as a colon ("નામઃ")
+      .replace(/ઃ/g, ':');
     const lower = text.toLowerCase();
 
     // Reject app screenshots or clearly non-card UI images
@@ -278,7 +282,7 @@ export class CustomersService {
     const litersLabelRegex =
       /(?:daily\s*milk|daily\s*(?:qty|quantity)|milk\s*(?:qty|quantity)?|liters?|ltrs?|ltr|દૈનિક\s*દૂધ|દૈનિક\s*જથ્થો|દૈનિક\s*જથૂથો|દૂધનો\s*જથ્થો|દૂધ|જથ્થો|જથૂથો|લિટર|લીટર|લટિર|दैनिक\s*दूध|दूध\s*की\s*मात्रा|दूध|मात्रा|लीटर|लिटर|लटिर)\s*[:=\-|.\s]*([0-9]+(?:[.,][0-9]+)?)\s*(ml|મિલી|મિ\.લી|मि\.?ली\.?)?/i;
     const litersUnitRegex =
-      /([0-9]+(?:[.,][0-9]+)?)\s*(?:liters?|ltrs?|ltr|લિટર|લીટર|લટિર|લી\.|લિ\.|लीटर|लिटर|लटिर|ली\.|लि\.|ml|મિલી|मि\.?ली\.?)/i;
+      /([0-9]+(?:[.,][0-9]+)?)\s*(?:liters?|ltrs?|ltr|લિં?ટર|લીટર|લટિર|લી\.|લિ\.|लीटर|लिटर|लटिर|ली\.|लि\.|ml|મિલી|मि\.?ली\.?)/i;
 
     for (const line of lines) {
       const hasRateHint = priceLineHintRegex.test(line) && !/(?:daily|દૈનિક|દૂધ|જથ્થો|જથૂથો|दैनिक|दूध|मात्रा)/i.test(line);
@@ -355,7 +359,7 @@ export class CustomersService {
     const multiWordNameLabelRegex =
       /(?:customer\s*name|cust\.?\s*name|member\s*name|holder\s*name|client\s*name|account\s*holder|name\s*of\s*(?:the\s*)?worker|worker\s*name|ગ્રાહકનું\s*નામ|ગ્રાહક\s*નું\s*નામ|ગ્રાહક\s*નામ|સભ્યનું\s*નામ|ग्राहक\s*का\s*नाम|ग्राहक\s*नाम|सदस्य\s*का\s*नाम)\s*[:=\-|.\s]+(.+)$/i;
     const singleWordGujHinNameRegex =
-      /(?:^|[\s|\].:-])(?:નામ|नाम)\s*[:=\-|.]*\s+(.+)$/;
+      /(?:^|[\s|\].:-])(?:નામ|नाम)\s*(?:[:=\-|.]+\s*|\s+)(.+)$/;
     const singleWordEngNameRegex =
       /^[|[\]\s]*name\s*[:=\-|.]+\s*(.+)$/i;
     const singleWordEngSpaceNameRegex =
@@ -386,8 +390,10 @@ export class CustomersService {
       }
     }
 
-    // Fallback for unlabelled / cropped milk cards that have clear phone or milk quantity
-    if (!extractedName && (extractedPhone || extractedLiters !== null)) {
+    // Fallback for unlabelled / cropped milk cards. Without phone or milk quantity, only accept a
+    // 2-4 word Gujarati/Hindi line (raw handwritten name) so English UI screenshots stay rejected.
+    const hasCardSignal = Boolean(extractedPhone) || extractedLiters !== null;
+    if (!extractedName) {
       const nonPersonHintRegex =
         /(?:dairy|ડેરી|डेयरी|farm|ફાર્મ|फार्म|milk|દૂધ|दूध|road|રોડ|रोड|nagar|નગર|नगर|society|સોસાયટી|सोसायटी|apt|apartment|એપાર્ટમેન્ટ|flat|ફ્લેટ|फ्लैट|village|ગામ|गांव|rajkot|ahmedabad|surat|vadodara|jaipur|bhavnagar|jamnagar|cow|buffalo|ગાય|ભેંસ|गाय|भैंस|address|સરનામું|पता|date|તારીખ|दिनांक|bill|total|કુલ|कुल)/i;
       const phoneIdx = extractedPhone
@@ -403,7 +409,9 @@ export class CustomersService {
         if (nonPersonHintRegex.test(line)) continue;
         const cand = cleanCandidate(line);
         const words = cand.split(' ').filter(Boolean);
-        if (cand && words.length >= 1 && words.length <= 4) {
+        const rawIndicName =
+          words.length >= 2 && /^[઀-૿ऀ-ॿ\s.'-]+$/.test(cand);
+        if (cand && words.length >= 1 && words.length <= 4 && (hasCardSignal || rawIndicName)) {
           extractedName = cand;
           break;
         }

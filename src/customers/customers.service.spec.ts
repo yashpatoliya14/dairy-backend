@@ -442,6 +442,29 @@ describe('CustomersService - Milk Entries & Card', () => {
       price: 50, // dairy default
     });
 
+    // Real Tesseract output for raw Gujarati cards (૨ misread as ર, visarga colon, no space, name only)
+    expect(
+      service.parseScannedCardText('ગ્રાહકનું નામ : ચીમનભાઈ પટેલ\nમોબાઈલ : ૯૮૯૮૦૨૨૩૪૨\nદૂધ : ર લિંટર\n', defaults),
+    ).toEqual({ name: 'ચીમનભાઈ પટેલ', phoneNumber: '9898022342', liters: 2, price: 50 });
+    expect(
+      service.parseScannedCardText('નામઃ રમેશભાઈ શાહ\nમો. ૯૮૭૬૫૪૩૨૧૦\n', defaults),
+    ).toEqual({ name: 'રમેશભાઈ શાહ', phoneNumber: '9876543210', liters: 1.5, price: 50 });
+    expect(
+      service.parseScannedCardText('રમેશભાઈ પટેલ\n૯૮૯૮૦૨ર૩૪ર\n', defaults),
+    ).toEqual({ name: 'રમેશભાઈ પટેલ', phoneNumber: '9898022342', liters: 1.5, price: 50 });
+    expect(
+      service.parseScannedCardText('નામ:મહેશભાઈ જોશી\nલિટર ૧.૫\n', defaults),
+    ).toEqual({ name: 'મહેશભાઈ જોશી', phoneNumber: '', liters: 1.5, price: 50 });
+    expect(service.parseScannedCardText('હિતેશ પરમાર\n', defaults)).toEqual({
+      name: 'હિતેશ પરમાર',
+      phoneNumber: '',
+      liters: 1.5,
+      price: 50,
+    });
+    expect(
+      service.parseScannedCardText('ભાવ ર. ૭૦\nનામ સુરેશ પરમાર', defaults)?.price,
+    ).toBe(70);
+
     // Rejects phone-only / screenshot text without valid customer name
     expect(
       service.parseScannedCardText('Mobile: 9898022342\nGemini API Key Required', defaults),
